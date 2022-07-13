@@ -1,39 +1,37 @@
 # FulgurDB
 
 #### 介绍
-{**以下是 Gitee 平台说明，您可以替换此简介**
-Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN）。专为开发者提供稳定、高效、安全的云端软件开发协作平台
-无论是个人、团队、或是企业，都能够用 Gitee 实现代码托管、项目管理、协作开发。企业项目请看 [https://gitee.com/enterprises](https://gitee.com/enterprises)}
+为社区版MySQL 8.0.27研发一个新的内存存储引擎FulgurDB，能够替代MySQL原有的InnoDB和Memory存储引擎，充分发挥大内存服务器的性能。
 
-#### 软件架构
-软件架构说明
+FulgurDB引擎需支持事务处理功能；
+所提交项目文档及源代码需符合GPL V2开源协议；
+如在项目中使用第三方开源代码，需确认开源协议是否有冲突；
+
+|**功能**	    |**InnoDB**	|**Memory**	|**FulgurDB**   |
+|:-------------:|:-----------:|:-----------:|:-------------:|
+|索引类型		|B-Tree索引	|B-Tree索引	|Mass-Tree索引|
+|数据压缩		|支持		|不支持		|不支持       |
+|数据缓存		|支持		|N/A		|N/A          |
+|索引缓存		|支持		|N/A		|N/A          |
+|外键			|支持		|不支持		|不支持       |
+|全文检索		|支持		|不支持		|不支持       |
+|空间数据类型	|支持		|不支持		|不支持       |
+|空间数据索引	|支持		|不支持		|不支持       |
+|锁粒度			|行级锁		|表锁		|行级锁       |
+|MVCC			|支持		|不支持		|支持         |
+|数据存储限制	|64TB		|内存限制	|内存限制     |
+|事务处理		|支持		|不支持		|支持         |
+|日志			|WAL		|不支持		|WAL          |
+|数据恢复		|基于日志	|不支持		|基于日志     |
+|检查点			|支持		|不支持		|支持         |
+|垃圾版本回收	|支持		|N/A		|支持         |
 
 
-#### 安装教程
+#### 系统架构
+（待完善）
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+
 
 #### 使用说明
+（待完善）
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
-
-#### 参与贡献
-
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
