@@ -21,6 +21,13 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 
 SET(FULGURDB_PLUGIN_DYNAMIC "ha_fulgurdb")
-SET(FULGURDB_SOURCES ha_fulgurdb.cc)
+SET(FULGURDB_SOURCES ha_fulgurdb.cc
+ha_fulgurdb_help.cc
+engine.cc
+database.cc
+)
+
+add_compile_options(-Wall -Werror)
+
 ADD_DEFINITIONS(-DMYSQL_SERVER)
 MYSQL_ADD_PLUGIN(fulgurdb ${FULGURDB_SOURCES} STORAGE_ENGINE DEFAULT)

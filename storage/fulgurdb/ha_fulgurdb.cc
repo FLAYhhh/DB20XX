@@ -100,6 +100,9 @@
 #include "sql/sql_plugin.h"
 #include "typelib.h"
 
+#include "./engine.h"
+#include "./ha_fulgurdb_help.h"
+
 static handler *fulgurdb_create_handler(handlerton *hton, TABLE_SHARE *table,
                                        bool partitioned, MEM_ROOT *mem_root);
 
@@ -120,6 +123,10 @@ static int fulgurdb_init_func(void *p) {
   fulgurdb_hton->create = fulgurdb_create_handler;
   fulgurdb_hton->flags = HTON_CAN_RECREATE;
   fulgurdb_hton->is_supported_system_table = fulgurdb_is_supported_system_table;
+
+  fulgurdb::Engine &engine = fulgurdb::Engine::GetInstance();
+  fulgurdb_hton->data = static_cast<void *>(&engine);
+  engine.init();
 
   return 0;
 }
@@ -735,25 +742,25 @@ static MYSQL_THDVAR_UINT(create_count_thdvar, 0, nullptr, nullptr, nullptr, 0,
 int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_info,
                        dd::Table *table_def) {
   DBUG_TRACE;
-  /*
-    This is not implemented but we want someone to be able to see that it
-    works.
-  */
+  (void) create_info;
+  (void) table_def;
+  //THD *thd = ha_thd();
+  LEX_CSTRING sl_dbname = form->s->db; // sl means server layer
+  //LEX_CSTRING sl_table_name = form->s->table_name;
+  std::string fulg_dbname(sl_dbname.str, sl_dbname.length); // fulg is the abbreviation of fulgurdb
+  std::string fulg_table_name(name);
+  fulgurdb::Database *fulg_db = nullptr;
 
-  /*
-    It's just an fulgurdb of THDVAR_SET() usage below.
-  */
-  THD *thd = ha_thd();
-  char *buf = (char *)my_malloc(PSI_NOT_INSTRUMENTED, SHOW_VAR_FUNC_BUFF_SIZE,
-                                MYF(MY_FAE));
-  snprintf(buf, SHOW_VAR_FUNC_BUFF_SIZE, "Last creation '%s'", name);
-  THDVAR_SET(thd, last_create_thdvar, buf);
-  my_free(buf);
+  fulgurdb::Engine *engine = static_cast<fulgurdb::Engine *>(ht->data);
+  if (engine->check_database_existence(fulg_dbname) == false)
+    fulg_db = engine->create_new_database(fulg_dbname);
+  else
+    fulg_db = engine->get_database(fulg_dbname);
 
-  uint count = THDVAR(thd, create_count_thdvar) + 1;
-  THDVAR_SET(thd, create_count_thdvar, &count);
+  fulgurdb::Schema schema;
+  generate_fulgur_schema(form, schema);
 
-  return 0;
+  return fulg_db->create_table(fulg_table_name, schema);
 }
 
 struct st_mysql_storage_engine fulgurdb_storage_engine = {
