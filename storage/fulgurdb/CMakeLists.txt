@@ -25,6 +25,9 @@ SET(FULGURDB_SOURCES ha_fulgurdb.cc
 ha_fulgurdb_help.cc
 engine.cc
 database.cc
+table.cc
+tuple.cc
+utils.cc
 )
 
 add_compile_options(-Wall -Werror)

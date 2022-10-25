@@ -1,13 +1,25 @@
 #include "./ha_fulgurdb_help.h"
 
-static void append_field_to_schema(fulgurdb::Schema &schema,
-            Field *sl_field, bool in_place) {
-  fulgurdb::Field se_field(std::string(sl_field->field_name),
-          sl_field->field_length, in_place);
+static void schema_add_inline_field(
+              fulgurdb::Schema &schema,
+              fulgurdb::TYPE_ID type_id,
+              const std::string &field_name,
+              uint32_t field_length) {
+  fulgurdb::Field se_field(type_id, field_name, field_length, fulgurdb::Field::STORE_INLINE);
 
   schema.add_field(se_field);
 }
 
+static void schema_add_non_inline_field(
+              fulgurdb::Schema &schema,
+              fulgurdb::TYPE_ID type_id,
+              const std::string &field_name,
+              uint32_t length_bytes) {
+  fulgurdb::Field se_field(type_id, field_name, 8, fulgurdb::Field::STORE_NON_INLINE);
+  se_field.set_mysql_length_bytes(length_bytes);
+
+  schema.add_field(se_field);
+}
 /**
 */
 void generate_fulgur_schema(TABLE *form, fulgurdb::Schema &schema) {
@@ -15,112 +27,87 @@ void generate_fulgur_schema(TABLE *form, fulgurdb::Schema &schema) {
   Field **sl_fieldp_array = form->s->field;
   for (uint32_t i = 0; i < field_num; i++) {
     Field *sl_fieldp = sl_fieldp_array[i];
-    //std::string field_name(sl_fieldp->field_name);
-    //uint32_t field_length = sl_fieldp->field_length;
+    std::string field_name(sl_fieldp->field_name);
+    uint32_t field_length = sl_fieldp->field_length;
     // see {project_root}/include/field_types.h
-    // FIXME:确认每种类型是否是in-place存储方式
     switch (sl_fieldp->type()) {
-      case MYSQL_TYPE_DECIMAL:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_TINY:
-        append_field_to_schema(schema, sl_fieldp, true);
+        schema_add_inline_field(schema, fulgurdb::TINYINT_ID,
+            field_name, field_length);
         break;
       case MYSQL_TYPE_SHORT:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_LONG:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_FLOAT:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_DOUBLE:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_NULL:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_TIMESTAMP:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_LONGLONG:
-        append_field_to_schema(schema, sl_fieldp, true);
+        schema_add_inline_field(schema, fulgurdb::SMALLINT_ID,
+            field_name, field_length);
         break;
       case MYSQL_TYPE_INT24:
-        append_field_to_schema(schema, sl_fieldp, true);
+        schema_add_inline_field(schema, fulgurdb::MEDIUMINT_ID,
+            field_name, field_length);
         break;
-      case MYSQL_TYPE_DATE:
-        append_field_to_schema(schema, sl_fieldp, true);
+      case MYSQL_TYPE_LONG:
+        schema_add_inline_field(schema, fulgurdb::INT_ID,
+            field_name, field_length);
         break;
-      case MYSQL_TYPE_TIME:
-        append_field_to_schema(schema, sl_fieldp, true);
+      case MYSQL_TYPE_LONGLONG:
+        schema_add_inline_field(schema, fulgurdb::BIGINT_ID,
+            field_name, field_length);
         break;
-      case MYSQL_TYPE_DATETIME:
-        append_field_to_schema(schema, sl_fieldp, true);
+      case MYSQL_TYPE_FLOAT:
+        schema_add_inline_field(schema, fulgurdb::FLOAT_ID,
+            field_name, field_length);
         break;
-      case MYSQL_TYPE_DATETIME2:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_YEAR:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
-      case MYSQL_TYPE_NEWDATE:
-        append_field_to_schema(schema, sl_fieldp, true);
+      case MYSQL_TYPE_DOUBLE:
+        schema_add_inline_field(schema, fulgurdb::DOUBLE_ID,
+            field_name, field_length);
         break;
       case MYSQL_TYPE_VARCHAR:
-        append_field_to_schema(schema, sl_fieldp, true);
+        schema_add_non_inline_field(schema, fulgurdb::VARCHAR_ID,
+            field_name, sl_fieldp->get_length_bytes());
         break;
+      case MYSQL_TYPE_DECIMAL:
+        schema_add_inline_field(schema, fulgurdb::DECIMAL_ID,
+            field_name, field_length);
+        break;
+      case MYSQL_TYPE_YEAR:
+        schema_add_inline_field(schema, fulgurdb::YEAR_ID,
+            field_name, field_length);
+        break;
+      case MYSQL_TYPE_DATE:
+        schema_add_inline_field(schema, fulgurdb::DATE_ID,
+            field_name, field_length);
+        break;
+      case MYSQL_TYPE_TIME:
+        schema_add_inline_field(schema, fulgurdb::TIME_ID,
+            field_name, field_length);
+        break;
+      case MYSQL_TYPE_DATETIME:
+        schema_add_inline_field(schema, fulgurdb::DATETIME_ID,
+            field_name, field_length);
+        break;
+      case MYSQL_TYPE_TIMESTAMP:
+        schema_add_inline_field(schema, fulgurdb::TIMESTAMP_ID,
+            field_name, field_length);
+        break;
+      case MYSQL_TYPE_DATETIME2:
+      case MYSQL_TYPE_NEWDATE:
       case MYSQL_TYPE_BIT:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_TIMESTAMP2:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_TIME2:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_TYPED_ARRAY:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_BOOL:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_JSON:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_NEWDECIMAL:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_ENUM:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_SET:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_TINY_BLOB:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_MEDIUM_BLOB:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_LONG_BLOB:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_BLOB:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_VAR_STRING:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_STRING:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
       case MYSQL_TYPE_GEOMETRY:
-        append_field_to_schema(schema, sl_fieldp, true);
-        break;
+      case MYSQL_TYPE_NULL:
       case MYSQL_TYPE_INVALID:
-        append_field_to_schema(schema, sl_fieldp, true);
+        fulgurdb::LOG_ERROR("not support field type");
         break;
     }
   }

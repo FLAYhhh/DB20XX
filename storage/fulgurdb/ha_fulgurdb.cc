@@ -124,9 +124,10 @@ static int fulgurdb_init_func(void *p) {
   fulgurdb_hton->flags = HTON_CAN_RECREATE;
   fulgurdb_hton->is_supported_system_table = fulgurdb_is_supported_system_table;
 
-  fulgurdb::Engine &engine = fulgurdb::Engine::GetInstance();
-  fulgurdb_hton->data = static_cast<void *>(&engine);
-  engine.init();
+  //fulgurdb::Engine &engine = fulgurdb::Engine::GetInstance();
+  //fulgurdb_hton->data = static_cast<void *>(&engine);
+  //engine.init();
+  fulgurdb::Engine::init();
 
   return 0;
 }
@@ -253,26 +254,11 @@ int ha_fulgurdb::close(void) {
 
 /**
   @brief
-  write_row() inserts a row. No extra() hint is given currently if a bulk load
-  is happening. buf() is a byte array of data. You can use the field
-  information to extract the data from the native byte array type.
+  write_row() inserts a row.
+
+  @param sl_row(server layer row): a byte array of data
 
   @details
-  Fulgurdb of this would be:
-  @code
-  for (Field **field=table->field ; *field ; field++)
-  {
-    ...
-  }
-  @endcode
-
-  See ha_tina.cc for an fulgurdb of extracting all of the data as strings.
-  ha_berekly.cc has an fulgurdb of how to store it intact by "packing" it
-  for ha_berkeley's own native storage type.
-
-  See the note for update_row() on auto_increments. This case also applies to
-  write_row().
-
   Called from item_sum.cc, item_sum.cc, sql_acl.cc, sql_insert.cc,
   sql_insert.cc, sql_select.cc, sql_table.cc, sql_udf.cc, and sql_update.cc.
 
@@ -281,14 +267,34 @@ int ha_fulgurdb::close(void) {
   sql_insert.cc, sql_select.cc, sql_table.cc, sql_udf.cc and sql_update.cc
 */
 
-int ha_fulgurdb::write_row(uchar *) {
+int ha_fulgurdb::write_row(uchar *sl_row) {
   DBUG_TRACE;
+  LEX_CSTRING sl_db_name = table->s->db;
+  LEX_CSTRING sl_table_name = table->s->table_name;
+
+  std::string db_name(sl_db_name.str, sl_db_name.length);
+  std::string table_name(sl_table_name.str, sl_table_name.length);
+
+  fulgurdb::Database *database = fulgurdb::Engine::get_database(db_name);
+  if (database == nullptr)
+    return -1;
+
+  fulgurdb::Table *se_table = database->get_table(table_name);
+  if (table == nullptr)
+    return -1;
+
   /*
-    Fulgurdb of a successful write_row. We don't store the data
-    anywhere; they are thrown away. A real implementation will
-    probably need to do something with 'buf'. We report a success
-    here, to pretend that the insert was successful.
-  */
+   1.首先需要一个pre allocate操作：
+     - 在内存中预先分配好row的存储空间
+     - 将分配好的空间于table中的schema信息结合起来，抽象成tuple类型
+   2.然后需要一个填充的操作:
+     - 将server层的row数据填充到tuple中
+  **/
+  std::unique_ptr<fulgurdb::Tuple> new_tuple = se_table->pre_allocate_tuple();
+
+  // FIXME: support null value
+  uint32_t sl_row_null_bytes = table->s->null_bytes;
+  new_tuple->load_data_from_mysql((char *)sl_row + sl_row_null_bytes, se_table->get_schema());
   return 0;
 }
 
@@ -749,18 +755,18 @@ int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_in
   //LEX_CSTRING sl_table_name = form->s->table_name;
   std::string fulg_dbname(sl_dbname.str, sl_dbname.length); // fulg is the abbreviation of fulgurdb
   std::string fulg_table_name(name);
-  fulgurdb::Database *fulg_db = nullptr;
+  fulgurdb::Database *db = nullptr;
 
-  fulgurdb::Engine *engine = static_cast<fulgurdb::Engine *>(ht->data);
-  if (engine->check_database_existence(fulg_dbname) == false)
-    fulg_db = engine->create_new_database(fulg_dbname);
+  //fulgurdb::Engine *engine = static_cast<fulgurdb::Engine *>(ht->data);
+  if (fulgurdb::Engine::check_database_existence(fulg_dbname) == false)
+    db = fulgurdb::Engine::create_new_database(fulg_dbname);
   else
-    fulg_db = engine->get_database(fulg_dbname);
+    db = fulgurdb::Engine::get_database(fulg_dbname);
 
   fulgurdb::Schema schema;
   generate_fulgur_schema(form, schema);
 
-  return fulg_db->create_table(fulg_table_name, schema);
+  return db->create_table(fulg_table_name, schema);
 }
 
 struct st_mysql_storage_engine fulgurdb_storage_engine = {

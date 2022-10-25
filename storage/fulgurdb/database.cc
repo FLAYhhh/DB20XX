@@ -24,4 +24,11 @@ int Database::create_table(const std::string &table_name, Schema &schema) {
   return 0;
 }
 
+Table *Database::get_table(const std::string table_name) {
+  if (check_table_existence(table_name) == false)
+    return nullptr;
+  else
+    return tables_[table_name];
+}
+
 }

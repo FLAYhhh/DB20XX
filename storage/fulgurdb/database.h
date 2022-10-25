@@ -4,13 +4,12 @@
 namespace fulgurdb {
 class Database{
 public:
-  Database(std::string db_name):db_name_(db_name){}
-  bool check_table_existence(const std::string &table_name);
+  Database(const std::string db_name):db_name_(db_name){}
 
-/**
-@return retval-0: success
-*/
+  bool check_table_existence(const std::string &table_name);
   int create_table(const std::string &table_name, Schema &schema);
+  Table *get_table(const std::string table_name);
+
 private:
   std::string db_name_;
   std::mutex tables_lock_;

@@ -15,21 +15,21 @@ class Engine {
 public:
   /** @brief 获取fulgurdb存储引擎的单例
   */
-  static Engine& GetInstance();
+  // static Engine& GetInstance();
 
   /** @brief 初始化fulgurdb存储引擎
   */
-  void init() {}
+  static void init() {}
 
 /*===============methods for database==================*/
-  bool check_database_existence(const std::string &db_name);
-  Database* create_new_database(const std::string &db_name);
+  static bool check_database_existence(const std::string &db_name);
+  static Database* create_new_database(const std::string &db_name);
 
-  Database* get_database(const std::string &db_name);
+  static Database* get_database(const std::string &db_name);
 
 private:
-  std::mutex databases_lock_;
-  std::unordered_map<std::string, Database*> databases_;
+  static std::mutex databases_lock_;
+  static std::unordered_map<std::string, Database*> databases_;
 };
 
 }
