@@ -49,6 +49,8 @@
 #include "sql/field.h"
 #include "thr_lock.h"    /* THR_LOCK, THR_LOCK_DATA */
 
+#include "./engine.h"
+
 /** @brief
   Fulgurdb_share is a class that will be shared among all open handlers.
   This fulgurdb implements the minimum of what you will probably need.
@@ -67,6 +69,9 @@ class ha_fulgurdb : public handler {
   THR_LOCK_DATA lock;          ///< MySQL lock
   Fulgurdb_share *share;        ///< Shared lock info
   Fulgurdb_share *get_share();  ///< Get the share
+
+  fulgurdb::Table *se_table_;
+  uint32_t cur_row_idx_;
 
  public:
   ha_fulgurdb(handlerton *hton, TABLE_SHARE *table_arg);

@@ -9,8 +9,11 @@ public:
   Table(const std::string &table_name, Schema &schema):
      table_name_(table_name), schema_(schema){}
 
-  const Schema& get_schema() {return schema_;}
+  const Schema& get_schema() const {return schema_;}
   std::unique_ptr<Tuple> pre_allocate_tuple();
+
+
+  char* get_row_data(uint32_t row_idx) const;
 
 private:
   std::string table_name_;

@@ -11,7 +11,7 @@ public:
 
   void add_field(Field &field) {
     fields_.push_back(field);
-    total_size_ += field.field_length_;
+    total_size_ += field.data_bytes_;
   }
 
   uint32_t field_num() const {

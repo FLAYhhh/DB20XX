@@ -24,20 +24,10 @@
   @file ha_fulgurdb.cc
 
   @brief
-  The ha_fulgurdb engine is a stubbed storage engine for fulgurdb purposes only;
-  it does nothing at this point. Its purpose is to provide a source
-  code illustration of how to begin writing new storage engines; see also
-  /storage/fulgurdb/ha_fulgurdb.h.
+  The ha_fulgurdb engine is a in-memory storage engine
+  see also /storage/fulgurdb/ha_fulgurdb.h.
 
   @details
-  ha_fulgurdb will let you create/open/delete tables, but
-  nothing further (for fulgurdb, indexes are not supported nor can data
-  be stored in the table). Use this fulgurdb as a template for
-  implementing the same functionality in your own storage engine. You
-  can enable the fulgurdb storage engine in your build by doing the
-  following during your build process:<br> ./configure
-  --with-fulgurdb-storage-engine
-
   Once this is done, MySQL will let you create tables with:<br>
   CREATE TABLE \<table name\> (...) ENGINE=FULGURDB;
 
@@ -223,11 +213,21 @@ static bool fulgurdb_is_supported_system_table(const char *db,
   handler::ha_open() in handler.cc
 */
 
-int ha_fulgurdb::open(const char *, int, uint, const dd::Table *) {
+int ha_fulgurdb::open(const char *name,
+     int, uint, const dd::Table *) {
   DBUG_TRACE;
+  LEX_CSTRING sl_db_name = table->s->db;
 
-  if (!(share = get_share())) return 1;
-  thr_lock_data_init(&share->lock, &lock, nullptr);
+  std::string db_name(sl_db_name.str, sl_db_name.length);
+  std::string table_name(name);
+
+  fulgurdb::Database *database = fulgurdb::Engine::get_database(db_name);
+  if (database == nullptr)
+    return -1;
+
+  se_table_ = database->get_table(table_name);
+  if (se_table_ == nullptr)
+    return -1;
 
   return 0;
 }
@@ -269,19 +269,6 @@ int ha_fulgurdb::close(void) {
 
 int ha_fulgurdb::write_row(uchar *sl_row) {
   DBUG_TRACE;
-  LEX_CSTRING sl_db_name = table->s->db;
-  LEX_CSTRING sl_table_name = table->s->table_name;
-
-  std::string db_name(sl_db_name.str, sl_db_name.length);
-  std::string table_name(sl_table_name.str, sl_table_name.length);
-
-  fulgurdb::Database *database = fulgurdb::Engine::get_database(db_name);
-  if (database == nullptr)
-    return -1;
-
-  fulgurdb::Table *se_table = database->get_table(table_name);
-  if (table == nullptr)
-    return -1;
 
   /*
    1.首先需要一个pre allocate操作：
@@ -290,11 +277,11 @@ int ha_fulgurdb::write_row(uchar *sl_row) {
    2.然后需要一个填充的操作:
      - 将server层的row数据填充到tuple中
   **/
-  std::unique_ptr<fulgurdb::Tuple> new_tuple = se_table->pre_allocate_tuple();
+  std::unique_ptr<fulgurdb::Tuple> new_tuple = se_table_->pre_allocate_tuple();
 
   // FIXME: support null value
   uint32_t sl_row_null_bytes = table->s->null_bytes;
-  new_tuple->load_data_from_mysql((char *)sl_row + sl_row_null_bytes, se_table->get_schema());
+  new_tuple->load_data_from_mysql((char *)sl_row + sl_row_null_bytes, se_table_->get_schema());
   return 0;
 }
 
@@ -427,7 +414,7 @@ int ha_fulgurdb::index_last(uchar *) {
 /**
   @brief
   rnd_init() is called when the system wants the storage engine to do a table
-  scan. See the fulgurdb in the introduction at the top of this file to see when
+  scan. See the Example in the introduction at the top of this file to see when
   rnd_init() is called.
 
   @details
@@ -440,6 +427,7 @@ int ha_fulgurdb::index_last(uchar *) {
 */
 int ha_fulgurdb::rnd_init(bool) {
   DBUG_TRACE;
+  cur_row_idx_ = 0;
   return 0;
 }
 
@@ -463,11 +451,19 @@ int ha_fulgurdb::rnd_end() {
   filesort.cc, records.cc, sql_handler.cc, sql_select.cc, sql_table.cc and
   sql_update.cc
 */
-int ha_fulgurdb::rnd_next(uchar *) {
-  int rc;
+int ha_fulgurdb::rnd_next(uchar *mysql_row_data) {
   DBUG_TRACE;
-  rc = HA_ERR_END_OF_FILE;
-  return rc;
+  char *fulgur_row_data = se_table_->get_row_data(cur_row_idx_++);
+  if (fulgur_row_data == nullptr) {
+    return HA_ERR_END_OF_FILE;
+  }
+
+  fulgurdb::Tuple tuple(fulgur_row_data);
+  uint32_t sl_row_null_bytes = table->s->null_bytes;
+  tuple.load_data_to_mysql((char *)mysql_row_data + sl_row_null_bytes, se_table_->get_schema());
+
+  table->set_found_row();
+  return 0;
 }
 
 /**
@@ -657,8 +653,8 @@ int ha_fulgurdb::external_lock(THD *, int) {
 */
 THR_LOCK_DATA **ha_fulgurdb::store_lock(THD *, THR_LOCK_DATA **to,
                                        enum thr_lock_type lock_type) {
-  if (lock_type != TL_IGNORE && lock.type == TL_UNLOCK) lock.type = lock_type;
-  *to++ = &lock;
+
+  (void) lock_type;
   return to;
 }
 

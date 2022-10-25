@@ -11,18 +11,18 @@ friend class Schema;
 public:
   static const bool STORE_INLINE = true;
   static const bool STORE_NON_INLINE = false;
-  Field(TYPE_ID type_id, std::string name, uint32_t field_length, bool store_inline):
+  Field(TYPE_ID type_id, std::string name, uint32_t data_bytes, bool store_inline):
     field_type_id_(type_id),
     field_name_(name),
-    field_length_(field_length),
+    data_bytes_(data_bytes),
     store_inline_(store_inline) {}
 
   bool store_inline() const {
     return store_inline_;
   }
 
-  uint32_t get_field_length() const {
-    return field_length_;
+  uint32_t get_data_bytes() const {
+    return data_bytes_;
   }
 
   void set_mysql_length_bytes(uint32_t length_bytes) {
@@ -33,10 +33,14 @@ public:
     return mysql_length_bytes_;
   }
 
+  TYPE_ID get_field_type() const {
+    return field_type_id_;
+  }
+
 private:
   TYPE_ID field_type_id_;
   std::string field_name_;
-  uint32_t field_length_;
+  uint32_t data_bytes_;
   bool store_inline_;
 
   // Field中需要额外存储一些MySQL server层中Field的元数据.
