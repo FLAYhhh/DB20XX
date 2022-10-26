@@ -3,6 +3,14 @@
 namespace fulgurdb {
 void Tuple::load_data_from_mysql(char *mysql_row_data, const Schema &schema) {
   char *fulgur_row_data = data_;
+
+  // store null bytes
+  uint32_t null_bytes = schema.get_null_byte_length();
+  memcpy(fulgur_row_data, mysql_row_data, null_bytes);
+  fulgur_row_data += null_bytes;
+  mysql_row_data += null_bytes;
+
+  // store fields
   for (uint32_t i = 0; i < schema.field_num(); i++) {
     const Field &field = schema.get_field(i);
     // 决定以inline方式存储在fulgurdb中的field，在mysql中一定是定长的。
@@ -43,6 +51,13 @@ void Tuple::load_data_from_mysql(char *mysql_row_data, const Schema &schema) {
 
 void Tuple::load_data_to_mysql(char *mysql_row_data, const Schema &schema) {
   char *fulgur_row_data = data_;
+  // restore null bytes
+  uint32_t null_bytes = schema.get_null_byte_length();
+  memcpy(mysql_row_data, fulgur_row_data, null_bytes);
+  fulgur_row_data += null_bytes;
+  mysql_row_data += null_bytes;
+
+  // restore fields
   for (uint32_t i = 0; i < schema.field_num(); i++) {
     const Field &field = schema.get_field(i);
     if (field.store_inline()) {

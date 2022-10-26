@@ -267,7 +267,7 @@ int ha_fulgurdb::close(void) {
   sql_insert.cc, sql_select.cc, sql_table.cc, sql_udf.cc and sql_update.cc
 */
 
-int ha_fulgurdb::write_row(uchar *sl_row) {
+int ha_fulgurdb::write_row(uchar *sl_record) {
   DBUG_TRACE;
 
   /*
@@ -278,10 +278,7 @@ int ha_fulgurdb::write_row(uchar *sl_row) {
      - 将server层的row数据填充到tuple中
   **/
   std::unique_ptr<fulgurdb::Tuple> new_tuple = se_table_->pre_allocate_tuple();
-
-  // FIXME: support null value
-  uint32_t sl_row_null_bytes = table->s->null_bytes;
-  new_tuple->load_data_from_mysql((char *)sl_row + sl_row_null_bytes, se_table_->get_schema());
+  new_tuple->load_data_from_mysql((char *)sl_record, se_table_->get_schema());
   return 0;
 }
 
@@ -451,7 +448,7 @@ int ha_fulgurdb::rnd_end() {
   filesort.cc, records.cc, sql_handler.cc, sql_select.cc, sql_table.cc and
   sql_update.cc
 */
-int ha_fulgurdb::rnd_next(uchar *mysql_row_data) {
+int ha_fulgurdb::rnd_next(uchar *sl_record) {
   DBUG_TRACE;
   char *fulgur_row_data = se_table_->get_row_data(cur_row_idx_++);
   if (fulgur_row_data == nullptr) {
@@ -459,8 +456,7 @@ int ha_fulgurdb::rnd_next(uchar *mysql_row_data) {
   }
 
   fulgurdb::Tuple tuple(fulgur_row_data);
-  uint32_t sl_row_null_bytes = table->s->null_bytes;
-  tuple.load_data_to_mysql((char *)mysql_row_data + sl_row_null_bytes, se_table_->get_schema());
+  tuple.load_data_to_mysql((char *)sl_record, se_table_->get_schema());
 
   table->set_found_row();
   return 0;
@@ -759,7 +755,9 @@ int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_in
   else
     db = fulgurdb::Engine::get_database(fulg_dbname);
 
+  uint32_t sl_row_null_bytes = table->s->null_bytes;
   fulgurdb::Schema schema;
+  schema.set_null_byte_length(sl_row_null_bytes);
   generate_fulgur_schema(form, schema);
 
   return db->create_table(fulg_table_name, schema);

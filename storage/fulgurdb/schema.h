@@ -23,8 +23,17 @@ public:
     return fields_[field_idx];
   }
 
+  void set_null_byte_length(uint32_t len) {
+    null_byte_length_ = len;
+  }
+
+  uint32_t get_null_byte_length() const {
+    return null_byte_length_;
+  }
+
 private:
   std::vector<Field> fields_;
   uint32_t total_size_;
+  uint32_t null_byte_length_;
 };
 }
