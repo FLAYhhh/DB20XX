@@ -38,14 +38,14 @@ public:
   }
 
 private:
-  TYPE_ID field_type_id_;
-  std::string field_name_;
-  uint32_t data_bytes_;
-  bool store_inline_;
+  TYPE_ID field_type_id_ = TYPE_ID_UPBOUND;
+  std::string field_name_ = "";
+  uint32_t data_bytes_ = 0;
+  bool store_inline_ = true;
 
   // Field中需要额外存储一些MySQL server层中Field的元数据.
   // 当MySQL的row buf存储到fulgurdb中时, 如果该field为变长数据类型，
   // 我们需要知道该field用多少个字节记录数据长度。
-  uint32_t mysql_length_bytes_;
+  uint32_t mysql_length_bytes_ = 0;
 };
 }

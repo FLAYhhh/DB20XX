@@ -7,7 +7,10 @@ class Schema {
 friend class Table;
 public:
   Schema() {}
-  Schema(const Schema &other):fields_(other.fields_){}
+  Schema(const Schema &other):
+    fields_(other.fields_),
+    total_size_(other.total_size_),
+    null_byte_length_(other.null_byte_length_){}
 
   void add_field(Field &field) {
     fields_.push_back(field);
@@ -33,7 +36,7 @@ public:
 
 private:
   std::vector<Field> fields_;
-  uint32_t total_size_;
-  uint32_t null_byte_length_;
+  uint32_t total_size_ = 0;
+  uint32_t null_byte_length_ = 0;
 };
 }

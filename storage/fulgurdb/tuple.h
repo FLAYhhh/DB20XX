@@ -10,7 +10,7 @@ public:
   void load_data_from_mysql(char *mysql_row_data, const Schema &schema);
   void load_data_to_mysql(char *mysql_row_data, const Schema &schema);
 private:
-  char *data_;
+  char *data_ = nullptr;
 };
 
 }
