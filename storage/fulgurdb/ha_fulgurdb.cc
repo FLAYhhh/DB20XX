@@ -114,11 +114,7 @@ static int fulgurdb_init_func(void *p) {
   fulgurdb_hton->flags = HTON_CAN_RECREATE;
   fulgurdb_hton->is_supported_system_table = fulgurdb_is_supported_system_table;
 
-  //fulgurdb::Engine &engine = fulgurdb::Engine::GetInstance();
-  //fulgurdb_hton->data = static_cast<void *>(&engine);
-  //engine.init();
   fulgurdb::Engine::init();
-
   return 0;
 }
 
@@ -223,11 +219,11 @@ int ha_fulgurdb::open(const char *name,
 
   fulgurdb::Database *database = fulgurdb::Engine::get_database(db_name);
   if (database == nullptr)
-    return -1;
+    return HA_ERR_NO_SUCH_TABLE; // 是否存在类似于no such db的error code？
 
   se_table_ = database->get_table(table_name);
   if (se_table_ == nullptr)
-    return -1;
+    return HA_ERR_NO_SUCH_TABLE;
 
   return 0;
 }
@@ -273,7 +269,7 @@ int ha_fulgurdb::write_row(uchar *sl_record) {
   /*
    1.首先需要一个pre allocate操作：
      - 在内存中预先分配好row的存储空间
-     - 将分配好的空间于table中的schema信息结合起来，抽象成tuple类型
+     - 将分配好的空间与table中的schema信息结合起来，抽象成tuple类型
    2.然后需要一个填充的操作:
      - 将server层的row数据填充到tuple中
   **/
@@ -284,28 +280,22 @@ int ha_fulgurdb::write_row(uchar *sl_record) {
 
 /**
   @brief
-  Yes, update_row() does what you expect, it updates a row. old_data will have
-  the previous row record in it, while new_data will have the newest data in it.
+  update_row() updates a row. old_data will have the previous row record in it, while new_data will have the newest data in it.
   Keep in mind that the server can do updates based on ordering if an ORDER BY
   clause was used. Consecutive ordering is not guaranteed.
 
   @details
   Currently new_data will not have an updated auto_increament record. You can
   do this for fulgurdb by doing:
-
   @code
-
   if (table->next_number_field && record == table->record[0])
     update_auto_increment();
-
   @endcode
-
   Called from sql_select.cc, sql_acl.cc, sql_update.cc, and sql_insert.cc.
-
   @see
   sql_select.cc, sql_acl.cc, sql_update.cc and sql_insert.cc
 */
-int ha_fulgurdb::update_row(const uchar *, uchar *) {
+int ha_fulgurdb::update_row(const uchar *old_row, uchar *new_row) {
   DBUG_TRACE;
   return HA_ERR_WRONG_COMMAND;
 }
