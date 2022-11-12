@@ -7,8 +7,8 @@ public:
   Database(const std::string db_name):db_name_(db_name){}
 
   bool check_table_existence(const std::string &table_name);
-  int create_table(const std::string &table_name, Schema &schema);
-  Table *get_table(const std::string table_name);
+  Table* create_table(const std::string &table_name, Schema &schema);
+  Table* get_table(const std::string table_name);
 
 private:
   std::string db_name_;

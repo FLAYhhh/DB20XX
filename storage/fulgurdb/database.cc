@@ -14,14 +14,14 @@ bool Database::check_table_existence(const std::string &table_name) {
 @return
   retval 0 success
 */
-int Database::create_table(const std::string &table_name, Schema &schema) {
+Table* Database::create_table(const std::string &table_name, Schema &schema) {
   if (check_table_existence(table_name) == true) {
-    return -1;
+    return nullptr;
   }
   Table *table = new Table(table_name, schema);
   tables_[table_name] = table;
 
-  return 0;
+  return table;
 }
 
 Table *Database::get_table(const std::string table_name) {

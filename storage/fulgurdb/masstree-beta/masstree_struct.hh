@@ -90,7 +90,7 @@ class node_base : public make_nodeversion<P>::type {
 
     void prefetch_full() const {
         for (int i = 0; i < std::min(16 * std::min(P::leaf_width, P::internode_width) + 1, 4 * 64); i += 64)
-            ::prefetch((const char *) this + i);
+            Masstree::prefetch((const char *) this + i);
     }
 
     void print(FILE* f, const char* prefix, int depth, int kdepth) const;
@@ -138,17 +138,17 @@ class internode : public node_base<P> {
         return ikey0_[p];
     }
     int compare_key(ikey_type a, int bp) const {
-        return ::compare(a, ikey(bp));
+        return Masstree::compare(a, ikey(bp));
     }
     int compare_key(const key_type& a, int bp) const {
-        return ::compare(a.ikey(), ikey(bp));
+        return Masstree::compare(a.ikey(), ikey(bp));
     }
     inline int stable_last_key_compare(const key_type& k, nodeversion_type v,
                                        threadinfo& ti) const;
 
     void prefetch() const {
         for (int i = 64; i < std::min(16 * width + 1, 4 * 64); i += 64)
-            ::prefetch((const char *) this + i);
+            Masstree::prefetch((const char *) this + i);
     }
 
     void print(FILE* f, const char* prefix, int depth, int kdepth) const;
@@ -459,12 +459,12 @@ class leaf : public node_base<P> {
 
     void prefetch() const {
         for (int i = 64; i < std::min(16 * width + 1, 4 * 64); i += 64)
-            ::prefetch((const char *) this + i);
+            Masstree::prefetch((const char *) this + i);
         if (extrasize64_ > 0)
-            ::prefetch((const char *) &iksuf_[0]);
+            Masstree::prefetch((const char *) &iksuf_[0]);
         else if (extrasize64_ < 0) {
-            ::prefetch((const char *) ksuf_);
-            ::prefetch((const char *) ksuf_ + CACHE_LINE_SIZE);
+            Masstree::prefetch((const char *) ksuf_);
+            Masstree::prefetch((const char *) ksuf_ + CACHE_LINE_SIZE);
         }
     }
 

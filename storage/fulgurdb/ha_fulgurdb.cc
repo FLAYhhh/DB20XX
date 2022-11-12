@@ -212,8 +212,8 @@ static bool fulgurdb_is_supported_system_table(const char *db,
 int ha_fulgurdb::open(const char *name,
      int, uint, const dd::Table *) {
   DBUG_TRACE;
+  //fulgurdb::threadinfo_type *ti = get_threadinfo();
   LEX_CSTRING sl_db_name = table->s->db;
-
   std::string db_name(sl_db_name.str, sl_db_name.length);
   std::string table_name(name);
 
@@ -265,16 +265,13 @@ int ha_fulgurdb::close(void) {
 
 int ha_fulgurdb::write_row(uchar *sl_record) {
   DBUG_TRACE;
+  fulgurdb::threadinfo_type *ti = get_threadinfo();
 
-  /*
-   1.首先需要一个pre allocate操作：
-     - 在内存中预先分配好row的存储空间
-     - 将分配好的空间与table中的schema信息结合起来，抽象成tuple类型
-   2.然后需要一个填充的操作:
-     - 将server层的row数据填充到tuple中
-  **/
-  std::unique_ptr<fulgurdb::Tuple> new_tuple = se_table_->pre_allocate_tuple();
-  new_tuple->load_data_from_mysql((char *)sl_record, se_table_->get_schema());
+  fulgurdb::RecordLocation rloc = se_table_->alloc_record();
+  rloc.load_data_from_mysql((char *)sl_record, se_table_->get_schema());
+  se_table_->insert_record(rloc);
+  se_table_->insert_record_to_index(rloc, *ti);
+
   return 0;
 }
 
@@ -296,6 +293,8 @@ int ha_fulgurdb::write_row(uchar *sl_record) {
   sql_select.cc, sql_acl.cc, sql_update.cc and sql_insert.cc
 */
 int ha_fulgurdb::update_row(const uchar *old_row, uchar *new_row) {
+  (void)old_row;
+  (void)new_row;
   DBUG_TRACE;
   return HA_ERR_WRONG_COMMAND;
 }
@@ -325,19 +324,22 @@ int ha_fulgurdb::delete_row(const uchar *) {
   return HA_ERR_WRONG_COMMAND;
 }
 
-/**
-  @brief
-  Positions an index cursor to the index specified in the handle. Fetches the
-  row if available. If the key value is null, begin at the first key of the
-  index.
-*/
+int ha_fulgurdb::index_read(uchar *buf, const uchar *key, uint key_len,
+                         enum ha_rkey_function find_flag) {
+  //FIXME: 当前fulgurdb只支持点查询
+  std::assert(find_flag == HA_READ_KEY_EXACT);
+  fulgurdb::Key fgdb_key(reinterpret_cast<char *>(
+                         const_cast<uchar *>(key)), key_len, false);
+  fulgurdb::RecordLocation rloc;
+  fulgurdb::threadinfo_type *ti = get_threadinfo();
+  bool found = false;
+  found = se_table_->get_record_from_index(active_index, fgdb_key, rloc, *ti);
 
-int ha_fulgurdb::index_read_map(uchar *, const uchar *, key_part_map,
-                               enum ha_rkey_function) {
-  int rc;
-  DBUG_TRACE;
-  rc = HA_ERR_WRONG_COMMAND;
-  return rc;
+  if (found) {
+    rloc.load_data_to_mysql((char *)buf, se_table_->get_schema());
+    return 0;
+  } else
+    return HA_ERR_KEY_NOT_FOUND;
 }
 
 /**
@@ -440,13 +442,13 @@ int ha_fulgurdb::rnd_end() {
 */
 int ha_fulgurdb::rnd_next(uchar *sl_record) {
   DBUG_TRACE;
-  char *fulgur_row_data = se_table_->get_row_data(cur_row_idx_++);
+  char *fulgur_row_data = se_table_->get_record_data(cur_row_idx_++);
   if (fulgur_row_data == nullptr) {
     return HA_ERR_END_OF_FILE;
   }
 
-  fulgurdb::Tuple tuple(fulgur_row_data);
-  tuple.load_data_to_mysql((char *)sl_record, se_table_->get_schema());
+  fulgurdb::RecordLocation rloc(fulgur_row_data);
+  rloc.load_data_to_mysql((char *)sl_record, se_table_->get_schema());
 
   table->set_found_row();
   return 0;
@@ -732,25 +734,51 @@ int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_in
   DBUG_TRACE;
   (void) create_info;
   (void) table_def;
+  int ret = 0;
   //THD *thd = ha_thd();
   LEX_CSTRING sl_dbname = form->s->db; // sl means server layer
   //LEX_CSTRING sl_table_name = form->s->table_name;
-  std::string fulg_dbname(sl_dbname.str, sl_dbname.length); // fulg is the abbreviation of fulgurdb
-  std::string fulg_table_name(name);
+  std::string fgdb_dbname(sl_dbname.str, sl_dbname.length); // fulg is the abbreviation of fulgurdb
+  std::string fgdb_table_name(name);
   fulgurdb::Database *db = nullptr;
 
-  //fulgurdb::Engine *engine = static_cast<fulgurdb::Engine *>(ht->data);
-  if (fulgurdb::Engine::check_database_existence(fulg_dbname) == false)
-    db = fulgurdb::Engine::create_new_database(fulg_dbname);
+  if (fulgurdb::Engine::check_database_existence(fgdb_dbname) == false)
+    db = fulgurdb::Engine::create_new_database(fgdb_dbname);
   else
-    db = fulgurdb::Engine::get_database(fulg_dbname);
+    db = fulgurdb::Engine::get_database(fgdb_dbname);
 
+  // generate table schema at create table time
   uint32_t sl_row_null_bytes = table->s->null_bytes;
   fulgurdb::Schema schema;
   schema.set_null_byte_length(sl_row_null_bytes);
   generate_fulgur_schema(form, schema);
 
-  return db->create_table(fulg_table_name, schema);
+  auto fgdb_table = db->create_table(fgdb_table_name, schema);
+  if (fgdb_table == nullptr) {
+    ret = HA_ERR_GENERIC;
+    return ret;
+  }
+
+  fulgurdb::threadinfo_type *ti = get_threadinfo();
+  // TABLE_SHARE::keys表示索引的个数
+  // TABLE::key_info[]中保存了索引键的信息
+  for (size_t i = 0; i < table->s->keys; i++) {
+    fulgurdb::KeyInfo keyinfo;
+    keyinfo.schema = schema;
+
+    KEY &mysql_key_info = table->key_info[i];
+    KEY_PART_INFO *keypart_end = mysql_key_info.key_part
+                 + mysql_key_info.user_defined_key_parts;
+    for (KEY_PART_INFO *keypart = mysql_key_info.key_part;
+          keypart != keypart_end; keypart++) {
+      keyinfo.add_key_part(keypart->fieldnr);
+      keyinfo.key_len += keypart->length;
+    }
+
+    fgdb_table->build_index(keyinfo, *ti);
+  }
+
+  return ret;
 }
 
 struct st_mysql_storage_engine fulgurdb_storage_engine = {

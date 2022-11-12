@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <errno.h>
 using lcdf::String;
+namespace Masstree {
 
 kvepoch_t global_log_epoch;
 kvepoch_t global_wake_epoch;
@@ -864,4 +865,5 @@ logreplay::replay(int which, threadinfo *ti)
         printf("recovered %" PRIu64 " records from %s\n", nr, filename_.c_str());
     }
     inactive();
+}
 }

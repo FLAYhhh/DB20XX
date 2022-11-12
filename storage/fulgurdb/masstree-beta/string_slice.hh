@@ -19,6 +19,8 @@
 #include <algorithm>
 #include <assert.h>
 #include <string.h>
+
+namespace Masstree {
 class threadinfo;
 
 /** @brief Provide access to T-typed slices of a string. */
@@ -169,4 +171,5 @@ template <typename T> struct string_slice {
 
 template <typename T> constexpr int string_slice<T>::size;
 
+}
 #endif

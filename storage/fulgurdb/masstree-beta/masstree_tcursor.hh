@@ -220,4 +220,6 @@ tcursor<P>::next_full_version_value(int state) const {
 }
 
 } // namespace Masstree
+#include "masstree_insert.hh"
+#include "masstree_remove.hh"
 #endif

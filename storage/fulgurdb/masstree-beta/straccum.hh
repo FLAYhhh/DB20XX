@@ -24,6 +24,7 @@
 #else
 # define LCDF_SNPRINTF_ATTR /* nothing */
 #endif
+namespace Masstree {
 namespace lcdf {
 
 /** @file <lcdf/straccum.hh>
@@ -724,5 +725,6 @@ inline void swap(StringAccum& a, StringAccum& b) {
 }
 
 } // namespace lcdf
+}
 #undef LCDF_SNPRINTF_ATTR
 #endif

@@ -32,6 +32,7 @@
 // because of copy constructors; for types with more expensive non-default
 // copy constructors this would probably be worse.
 
+namespace Masstree {
 typedef size_t hashcode_t;	///< Typical type for a hashcode() value.
 
 template <typename T>
@@ -70,41 +71,9 @@ inline hashcode_t hashcode(int const &x) {
 }
 
 template <>
-inline hashcode_t hashcode(unsigned const &x) {
-    return x;
-}
-
-template <>
-inline hashcode_t hashcode(long const &x) {
-    return x;
-}
-
-template <>
-inline hashcode_t hashcode(unsigned long const &x) {
-    return x;
-}
-
-template <>
-inline hashcode_t hashcode(long long const &x) {
-    return (x >> 32) ^ x;
-}
-
-template <>
-inline hashcode_t hashcode(unsigned long long const &x) {
-    return (x >> 32) ^ x;
-}
-
-#if HAVE_INT64_TYPES && !HAVE_INT64_IS_LONG && !HAVE_INT64_IS_LONG_LONG
-template <>
-inline hashcode_t hashcode(int64_t const &x) {
-    return (x >> 32) ^ x;
-}
-
-template <>
 inline hashcode_t hashcode(uint64_t const &x) {
     return (x >> 32) ^ x;
 }
-#endif
 
 template <typename T>
 inline hashcode_t hashcode(T * const &x) {
@@ -116,4 +85,5 @@ inline typename T::key_const_reference hashkey(const T &x) {
     return x.hashkey();
 }
 
+}
 #endif

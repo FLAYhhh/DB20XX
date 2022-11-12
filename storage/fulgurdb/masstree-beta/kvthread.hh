@@ -25,6 +25,7 @@
 #include <sys/mman.h>
 #include <stdlib.h>
 
+namespace Masstree {
 class threadinfo;
 class loginfo;
 
@@ -33,6 +34,7 @@ typedef int64_t mrcu_signed_epoch_type;
 
 extern volatile mrcu_epoch_type globalepoch;  // global epoch, updated regularly
 extern volatile mrcu_epoch_type active_epoch;
+
 
 struct limbo_group {
     typedef mrcu_epoch_type epoch_type;
@@ -93,8 +95,9 @@ struct mrcu_callback {
 
 class threadinfo {
   public:
+    typedef struct mrcu_callback mrcu_callback;
     enum {
-        TI_MAIN, TI_PROCESS, TI_LOG, TI_CHECKPOINT
+        TI_MAIN, TI_PROCESS, TI_LOG, TI_CHECKPOINT, TI_DUMMY
     };
 
     static threadinfo* allthreads;
@@ -274,7 +277,7 @@ class threadinfo {
         if (perform_gc_epoch_ != active_epoch)
             hard_rcu_quiesce();
     }
-    typedef ::mrcu_callback mrcu_callback;
+    //typedef mrcu_callback mrcu_callback;
     void rcu_register(mrcu_callback* cb) {
         record_rcu(cb, memtag(-1));
     }
@@ -374,5 +377,5 @@ inline mrcu_epoch_type threadinfo::min_active_epoch() {
     }
     return ae;
 }
-
+}
 #endif

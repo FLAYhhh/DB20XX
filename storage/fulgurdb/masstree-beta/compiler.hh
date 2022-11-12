@@ -13,20 +13,24 @@
  * notice is a summary of the Masstree LICENSE file; the license in that file
  * is legally binding.
  */
-#ifndef MASSTREE_COMPILER_HH
-#define MASSTREE_COMPILER_HH 1
+#pragma once
+
+#include "config.h"
 #include <stdint.h>
+#ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
+#endif
 #include <inttypes.h>
 #include <arpa/inet.h>
 #if HAVE_TYPE_TRAITS
 #include <type_traits>
 #endif
 
+namespace Masstree {
 #define arraysize(a) (sizeof(a) / sizeof((a)[0]))
 
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
+inline bool likely(bool expr) { return __builtin_expect(expr, true); }
+inline bool unlikely(bool expr) { return __builtin_expect(expr, false); }
 
 #if HAVE_OFF_T_IS_LONG_LONG
 #define PRIdOFF_T "lld"
@@ -1190,4 +1194,4 @@ template <> struct has_fast_int_multiply<unsigned long long> : public mass::true
 
 struct uninitialized_type {};
 
-#endif
+} //end of namespace Masstree

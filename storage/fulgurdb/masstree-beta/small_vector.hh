@@ -4,7 +4,7 @@
 #include <memory>
 #include <iterator>
 #include <assert.h>
-
+namespace Masstree {
 template <typename T, unsigned N, typename A = std::allocator<T> >
 class small_vector {
   public:
@@ -340,5 +340,5 @@ T* small_vector<T, N, A>::erase(iterator first, iterator last) {
 template <typename T, unsigned N, typename A>
 constexpr typename small_vector<T, N, A>::size_type
   small_vector<T, N, A>::small_capacity;
-
+}
 #endif

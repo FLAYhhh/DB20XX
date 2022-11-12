@@ -20,6 +20,8 @@
 #include "kvproto.hh"
 #include "str.hh"
 #include <pthread.h>
+
+namespace Masstree {
 class logset;
 using lcdf::Str;
 namespace lcdf { class Json; }
@@ -230,4 +232,5 @@ inline row_delta_marker<R>* row_get_delta_marker(const R* row, bool force = fals
         (const_cast<char*>(row->col(0).s));
 }
 
+} //end of namespace
 #endif

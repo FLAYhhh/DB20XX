@@ -39,6 +39,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <vector>
+namespace Masstree {
 namespace lcdf {
 
 /** @file string.hh
@@ -1043,7 +1044,7 @@ String::align(int n)
         String s;
         s.append_uninitialized(_r.length + n + 1);
         offset = reinterpret_cast<uintptr_t>(s._r.data) % n;
-        memcpy((char *)s._r.data + n - offset, _r.data, _r.length);
+        memcpy(const_cast<char *>(s._r.data) + n - offset, _r.data, _r.length);
         s._r.data += n - offset;
         s._r.length = _r.length;
         *this = s;
@@ -1385,3 +1386,4 @@ String String::encode_uri_component() const {
 }
 
 } // namespace lcdf
+}

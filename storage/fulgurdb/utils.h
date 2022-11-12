@@ -7,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <cstring>
+#include <cassert>
 
 
 namespace fulgurdb {

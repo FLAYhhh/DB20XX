@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
+namespace Masstree {
 namespace lcdf {
 
 /** @class StringAccum
@@ -396,3 +397,4 @@ StringAccum::append_break_lines(const String& text, int linelen, const String &l
 }
 
 } // namespace lcdf
+}

@@ -15,7 +15,7 @@
  */
 #ifndef MTCOUNTERS_HH
 #define MTCOUNTERS_HH 1
-
+namespace Masstree {
 enum memtag {
     // memtags are divided into a *type* and a *pool*.
     // The type is purely for debugging. The pool indicates the pool from
@@ -55,5 +55,5 @@ enum threadcounter {
     tc_leaf_lock,
     tc_max
 };
-
+}
 #endif

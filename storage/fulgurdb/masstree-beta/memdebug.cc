@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <assert.h>
 
+namespace Masstree {
 #if HAVE_MEMDEBUG
 void memdebug::landmark(char* buf, size_t bufsz) const {
     if (this->magic != magic_value && this->magic != magic_free_value)
@@ -77,3 +78,4 @@ memdebug::hard_assert_use(const void* ptr, memtag allowed) {
         assert((m->tag ^ allowed) <= memtag_pool_mask);
 }
 #endif
+}

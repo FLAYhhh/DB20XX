@@ -24,10 +24,15 @@
 #include <dirent.h>
 #endif
 
+namespace Masstree {
 threadinfo *threadinfo::allthreads;
 #if ENABLE_ASSERTIONS
 int threadinfo::no_pool_value;
 #endif
+
+//FIXME: 当前为了通过链接,错误地使用了RCU
+volatile mrcu_epoch_type globalepoch = 0;  // global epoch, updated regularly
+volatile mrcu_epoch_type active_epoch = 0;
 
 inline threadinfo::threadinfo(int purpose, int index) {
     gc_epoch_ = perform_gc_epoch_ = 0;
@@ -251,4 +256,5 @@ void threadinfo::refill_pool(int nl) {
 
     initialize_pool(pool, pool_size, nl * CACHE_LINE_SIZE);
     pool_[nl - 1] = pool;
+}
 }

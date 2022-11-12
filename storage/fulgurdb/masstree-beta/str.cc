@@ -14,6 +14,7 @@
  * is legally binding.
  */
 #include "str.hh"
+namespace Masstree {
 namespace lcdf {
 
 const Str Str::maxkey("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"
@@ -51,3 +52,4 @@ const Str Str::maxkey("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"
                       "\xFF", 257);
 
 } // namespace lcdf
+}

@@ -19,7 +19,7 @@
 #if HAVE_NUMA_H
 #include <numa.h>
 #endif
-
+namespace Masstree {
 enum { MaxCores = 48 };   // Maximum number of cores kvdb statistics support
 enum { MaxNumaNode = 8 }; // Maximum number of Numa node kvdb statistics support
 enum { CoresPerChip = MaxCores / MaxNumaNode };
@@ -213,4 +213,5 @@ stat::print(const stat **s, int n) {
 #endif
 }
 
+}
 }

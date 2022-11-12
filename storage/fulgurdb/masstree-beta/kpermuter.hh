@@ -17,6 +17,7 @@
 #define KPERMUTER_HH
 #include "string.hh"
 
+namespace Masstree {
 class identity_kpermuter {
     int size_;
   public:
@@ -325,5 +326,5 @@ template <typename T> struct key_permuter<T, false> {
         return identity_kpermuter(n.size());
     }
 };
-
+}
 #endif

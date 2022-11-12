@@ -15,13 +15,14 @@
  */
 #ifndef MASSTREE_HH
 #define MASSTREE_HH
+#include "config.h"
 #include "compiler.hh"
 #include "str.hh"
 #include "ksearch.hh"
 
 namespace Masstree {
 using lcdf::Str;
-using lcdf::String;
+//using lcdf::String;
 
 class key_unparse_printable_string;
 template <typename T> class value_print;
@@ -40,6 +41,7 @@ template <int LW = 15, int IW = LW> struct nodeparams {
     static constexpr ssize_t print_max_indent_depth = 12;
     typedef key_unparse_printable_string key_unparse_type;
 };
+
 
 template <int LW, int IW> constexpr int nodeparams<LW, IW>::leaf_width;
 template <int LW, int IW> constexpr int nodeparams<LW, IW>::internode_width;
@@ -65,7 +67,7 @@ class basic_table {
     typedef unlocked_tcursor<P> unlocked_cursor_type;
     typedef tcursor<P> cursor_type;
 
-    inline basic_table();
+    basic_table();
 
     void initialize(threadinfo& ti);
     void destroy(threadinfo& ti);

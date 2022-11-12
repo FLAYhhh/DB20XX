@@ -1,6 +1,8 @@
 #pragma once
 #include "./utils.h"
 #include "./database.h"
+#include "./thread_local.h"
+#include "./index.h"
 
 namespace fulgurdb {
 

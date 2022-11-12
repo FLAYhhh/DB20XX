@@ -17,6 +17,7 @@
 #define KSEARCH_HH 1
 #include "kpermuter.hh"
 
+namespace Masstree {
 template <typename KA, typename T>
 struct key_comparator {
     int operator()(const KA& ka, const T& n, int p) {
@@ -169,5 +170,5 @@ template <int max_size> struct key_bound<max_size, bound_method_linear> {
 template <int max_size> struct key_bound<max_size, bound_method_fast> {
     typedef typename key_bound<max_size, (max_size > 16 ? bound_method_binary : bound_method_linear)>::type type;
 };
-
+}
 #endif

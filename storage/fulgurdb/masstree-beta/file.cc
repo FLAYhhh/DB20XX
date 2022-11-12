@@ -16,7 +16,7 @@
 #include "file.hh"
 #include "straccum.hh"
 #include <fcntl.h>
-
+namespace Masstree {
 lcdf::String read_file_contents(int fd) {
     lcdf::StringAccum sa;
     while (1) {
@@ -86,4 +86,5 @@ int atomic_write_file_contents(const char *filename, const lcdf::String &content
         return -1;
 
     return rename(tmp_filename.c_str(), filename);
+}
 }

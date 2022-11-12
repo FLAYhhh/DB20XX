@@ -18,6 +18,7 @@
 #include "mtcounters.hh"
 #include <stddef.h>
 
+namespace Masstree {
 struct memdebug {
     static inline void* make(void* ptr, size_t sz, memtag tag);
     static inline void set_landmark(void* ptr, const char* file, int line);
@@ -147,4 +148,5 @@ inline void memdebug::assert_use(const void* ptr, memtag allowed) {
 #endif
 }
 
+}
 #endif

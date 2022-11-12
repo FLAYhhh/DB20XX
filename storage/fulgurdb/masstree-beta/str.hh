@@ -18,6 +18,7 @@
 #include "string_base.hh"
 #include <stdarg.h>
 #include <stdio.h>
+namespace Masstree {
 namespace lcdf {
 
 struct Str : public String_base<Str> {
@@ -130,7 +131,8 @@ struct Str : public String_base<Str> {
         return p == len && p != 0 ? x : -1;
     }
 
-    static Str snprintf(char *buf, size_t size, const char *fmt, ...) {
+    static Str snprintf(char *buf, size_t size, const char *fmt, ...)
+       __attribute__((format (printf, 3, 4))) {
         va_list val;
         va_start(val, fmt);
         int n = vsnprintf(buf, size, fmt, val);
@@ -162,4 +164,5 @@ struct inline_string : public String_base<inline_string> {
 
 LCDF_MAKE_STRING_HASH(lcdf::Str)
 LCDF_MAKE_STRING_HASH(lcdf::inline_string)
+}
 #endif

@@ -22,6 +22,7 @@
 #include <limits.h>
 #include <ctype.h>
 #include <iostream>
+namespace Masstree {
 namespace lcdf {
 class StringAccum;
 #define LCDF_CONSTANT_CSTR(cstr) ((cstr) && __builtin_constant_p(strlen((cstr))))
@@ -504,16 +505,7 @@ inline typename T::substring_type String_generic::trim(const T &str) {
     return str.fast_substring(b, e);
 }
 
-#if HAVE_STD_HASH
-# define LCDF_MAKE_STRING_HASH(type) \
-    namespace std { template <> struct hash<type>          \
-        : public unary_function<const type&, size_t> {     \
-        size_t operator()(const type& x) const noexcept {  \
-            return x.hashcode();                           \
-        } }; }
-#else
 # define LCDF_MAKE_STRING_HASH(type)
-#endif
 
 template <typename T> template <typename E>
 typename String_base<T>::const_iterator String_base<T>::encode_json_partial(E& enc) const {
@@ -655,4 +647,5 @@ void String_base<T>::encode_uri_component(E& enc) const {
 }
 
 } // namespace lcdf
+}
 #endif

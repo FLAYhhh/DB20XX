@@ -19,7 +19,7 @@
 #include "misc.hh"
 #include <stdlib.h>
 #include <inttypes.h>
-
+namespace Masstree {
 namespace Perf {
 struct stat {
     /** @brief An initialization call from main function
@@ -34,5 +34,6 @@ struct stat {
     static void print(const stat **s, int n);
     int cid;    // core index
 };
+}
 }
 #endif

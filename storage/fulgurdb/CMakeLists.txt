@@ -26,8 +26,14 @@ ha_fulgurdb_help.cc
 engine.cc
 database.cc
 table.cc
-tuple.cc
+record_location.cc
 utils.cc
+
+masstree-beta/compiler.cc
+masstree-beta/kvthread.cc
+masstree-beta/str.cc
+masstree-beta/string.cc
+masstree-beta/string_slice.cc
 )
 
 add_compile_options(-Wall -Werror)

@@ -38,6 +38,7 @@
     allocate an array of characters for the stringbag, then use placement
     new to construct the stringbag on that memory. Stringbag has a
     trivial destructor. */
+namespace Masstree {
 template <typename T>
 class stringbag {
  public:
@@ -158,5 +159,5 @@ class stringbag {
         char s_[0];
     };
 };
-
+}
 #endif

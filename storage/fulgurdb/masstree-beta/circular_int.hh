@@ -17,6 +17,7 @@
 #define KVDB_CIRCULAR_INT_HH 1
 #include "compiler.hh"
 
+namespace Masstree {
 template <typename T>
 class circular_int {
   public:
@@ -68,10 +69,10 @@ class circular_int {
     }
 
     circular_int<T> cmpxchg(circular_int<T> expected, circular_int<T> desired) {
-        return ::cmpxchg(&v_, expected.v_, desired.v_);
+        return cmpxchg(&v_, expected.v_, desired.v_);
     }
     circular_int<T> cmpxchg(T expected, T desired) {
-        return ::cmpxchg(&v_, expected, desired);
+        return cmpxchg(&v_, expected, desired);
     }
 
     typedef value_type (circular_int<T>::*unspecified_bool_type)() const;
@@ -143,4 +144,5 @@ inline circular_int<T> cmpxchg(circular_int<T> *object, circular_int<T> expected
     return object->cmpxchg(expected, desired);
 }
 
+}
 #endif

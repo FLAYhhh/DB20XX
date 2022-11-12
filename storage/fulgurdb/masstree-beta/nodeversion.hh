@@ -16,7 +16,7 @@
 #ifndef MASSTREE_NODEVERSION_HH
 #define MASSTREE_NODEVERSION_HH
 #include "compiler.hh"
-
+namespace Masstree {
 template <typename P>
 class nodeversion {
   public:
@@ -366,5 +366,5 @@ template <> struct nodeversion_parameters<uint64_t> {
 };
 
 typedef nodeversion<nodeversion_parameters<uint32_t> > nodeversion32;
-
+}
 #endif

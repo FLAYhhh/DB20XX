@@ -131,7 +131,7 @@ class key {
     }
 
     int compare(ikey_type ikey, int keylenx) const {
-        int cmp = ::compare(this->ikey(), ikey);
+        int cmp = Masstree::compare(this->ikey(), ikey);
         if (cmp == 0) {
             int al = this->length();
             if (al > ikey_size)
@@ -152,25 +152,25 @@ class key {
             memcpy(data + ikey_size, s_ + ikey_size, cplen - ikey_size);
         return cplen;
     }
-    String unparse() const {
-        String s = String::make_uninitialized(len_);
+    lcdf::String unparse() const {
+        lcdf::String s = lcdf::String::make_uninitialized(len_);
         unparse(s.mutable_data(), s.length());
         return s;
     }
     int unparse_printable(char* data, int datalen) const {
-        String s = unparse_printable();
+        lcdf::String s = unparse_printable();
         int cplen = std::min(s.length(), datalen);
         memcpy(data, s.data(), cplen);
         return cplen;
     }
-    String unparse_printable() const {
+    lcdf::String unparse_printable() const {
         return unparse().printable();
     }
-    static String unparse_ikey(ikey_type ikey) {
+    static lcdf::String unparse_ikey(ikey_type ikey) {
         key<ikey_type> k(ikey);
         return k.unparse();
     }
-    static String unparse_printable_ikey(ikey_type ikey) {
+    static lcdf::String unparse_printable_ikey(ikey_type ikey) {
         key<ikey_type> k(ikey);
         return k.unparse_printable();
     }

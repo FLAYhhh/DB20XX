@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+namespace Masstree {
 void fail_always_assert(const char* file, int line,
                         const char* assertion, const char* message) {
     if (message)
@@ -48,4 +49,5 @@ void fail_masstree_precondition(const char* file, int line,
         fprintf(stderr, "precondition \"%s\" failed: file \"%s\", line %d\n",
                 assertion, file, line);
     abort();
+}
 }

@@ -143,7 +143,7 @@ class ha_fulgurdb : public handler {
     There is no need to implement ..._key_... methods if your engine doesn't
     support indexes.
    */
-  uint max_supported_keys() const override { return 0; }
+  uint max_supported_keys() const override { return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEYS); }
 
   /** @brief
     unireg.cc will call this to make sure that the storage engine can handle
@@ -154,7 +154,7 @@ class ha_fulgurdb : public handler {
     There is no need to implement ..._key_... methods if your engine doesn't
     support indexes.
    */
-  uint max_supported_key_parts() const override { return 0; }
+  uint max_supported_key_parts() const override { return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_PARTS); }
 
   /** @brief
     unireg.cc will call this to make sure that the storage engine can handle
@@ -165,7 +165,7 @@ class ha_fulgurdb : public handler {
     There is no need to implement ..._key_... methods if your engine doesn't
     support indexes.
    */
-  uint max_supported_key_length() const override { return 0; }
+  uint max_supported_key_length() const override { return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_LENGTH); }
 
   /** @brief
     Called in test_quick_select to determine if indexes should be used.
@@ -216,12 +216,8 @@ class ha_fulgurdb : public handler {
   */
   int delete_row(const uchar *buf) override;
 
-  /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
-    skip it and and MySQL will treat it as not implemented.
-  */
-  int index_read_map(uchar *buf, const uchar *key, key_part_map keypart_map,
-                     enum ha_rkey_function find_flag) override;
+  int index_read(uchar *buf, const uchar *key, uint key_len,
+                         enum ha_rkey_function find_flag) override;
 
   /** @brief
     We implement this in ha_fulgurdb.cc. It's not an obligatory method;

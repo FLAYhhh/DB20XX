@@ -17,6 +17,7 @@
 #define BTREE_LEAFLINK_HH 1
 #include "compiler.hh"
 
+namespace Masstree {
 /** @brief Operations to manage linked lists of B+tree leaves.
 
     N is the type of nodes. CONCURRENT is true to make operations
@@ -121,4 +122,5 @@ template <typename N> struct btree_leaflink<N, false> {
     }
 };
 
+}
 #endif

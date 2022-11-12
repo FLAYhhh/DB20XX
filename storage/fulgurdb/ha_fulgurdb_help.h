@@ -20,4 +20,4 @@
 @param schema SE层table的schema(colunme type等信息)
 */
 void generate_fulgur_schema(TABLE *form, fulgurdb::Schema &schema);
-
+fulgurdb::threadinfo_type *get_threadinfo();

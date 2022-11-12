@@ -21,6 +21,7 @@
 #include <errno.h>
 #include "string.hh"
 
+namespace Masstree {
 inline ssize_t
 safe_read(int fd, void *buf, size_t count)
 {
@@ -80,4 +81,5 @@ int sync_write_file_contents(const char *filename, const lcdf::String &contents,
 int atomic_write_file_contents(const char *filename, const lcdf::String &contents,
                                mode_t mode = 0666);
 
+}
 #endif

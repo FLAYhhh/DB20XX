@@ -20,6 +20,7 @@
 #include <sys/time.h>
 #include <math.h>
 
+namespace Masstree {
 #if HAVE_INT64_T_IS_LONG_LONG
 #define PRIuKVTS "llu"
 #else
@@ -59,5 +60,5 @@ inline struct timespec &set_timespec(struct timespec &x, double y) {
     x.tv_nsec = (long) ((y - ipart) * 1e9);
     return x;
 }
-
+}
 #endif
