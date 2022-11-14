@@ -3,6 +3,7 @@
 #include "./masstree-beta/kvthread.hh"
 #include "./masstree-beta/masstree.hh"
 #include "./masstree-beta/masstree_tcursor.hh"
+#include "./masstree-beta/masstree_scan.hh"
 #include "./record_location.h"
 
 namespace fulgurdb {
@@ -39,10 +40,6 @@ struct KeyInfo {
   uint32_t key_len = 0;
 };
 
-class Scanner {
-
-};
-
 class Index {
 public:
   Index(void) {}
@@ -50,10 +47,6 @@ public:
   ~Index() {}
 
   virtual bool get(const Key &key, RecordLocation &tloc, threadinfo &ti) const = 0;
-
-  //virtual int scan(const Key &key, bool matchfirst, Scanner& scanner, threadinfo &ti) const;
-
-  //virtual int rscan(const Key &key, bool matchfirst, Scanner& scanner, threadinfo &ti) const;
 
   virtual bool put(const Key &key, const RecordLocation &tloc, threadinfo &ti) = 0;
 
@@ -84,13 +77,22 @@ private:
 
 
 
-class MasstreeIndex: public Index {
-  struct fulgurdb_masstree_params : public nodeparams<15, 15> {
-    typedef RecordLocation* value_type;
-    typedef value_print<value_type> value_print_type;
-    typedef threadinfo threadinfo_type;
-  };
+struct fulgurdb_masstree_params : public nodeparams<15, 15> {
+  typedef RecordLocation* value_type;
+  typedef value_print<value_type> value_print_type;
+  typedef threadinfo threadinfo_type;
+};
 
+/*
+Mysql的scan操作由scan_range_first和一系列scan_range_next完成,
+在此过程中,每个操作上下文需要记录scan的状态.
+Masstree索引使用scan_stack_type记录scan的状态.
+我们将scan_stack_type存储在class ThreadLocal中.
+*/
+typedef fulgurdb_masstree_params nodeparam_type;
+typedef scanstackelt<nodeparam_type> scan_stack_type;
+
+class MasstreeIndex: public Index {
   typedef basic_table<fulgurdb_masstree_params> fulgur_masstree_type;
   typedef RecordLocation* leafvalue_type;
 public:
@@ -135,13 +137,62 @@ public:
       @retval2 false: key doesnot exist
     FIXME: same problem with apply_put
   */
-  bool get(const Key &key, RecordLocation &tloc, threadinfo &ti) const override {
+  bool get(const Key &key, RecordLocation &rloc, threadinfo &ti) const override {
     typename fulgur_masstree_type::unlocked_cursor_type lp(masstree_, Str(key.data, key.len));
     bool found = lp.find_unlocked(ti);
     if (found)
-      tloc = *lp.value();
+      rloc = *lp.value();
 
     return found;
+  }
+
+
+  bool scan_range_first(const Key &key, RecordLocation &rloc,
+                  bool emit_firstkey, scan_stack_type &stack,
+                  threadinfo &ti) const{
+    masstree_.scan_range_first(Str(key.data, key.len),
+                   emit_firstkey, stack, ti);
+    if (stack.no_value()) {
+      return false;
+    } else {
+      rloc = *stack.get_value();
+      return true;
+    }
+  }
+
+  bool scan_range_next(RecordLocation &rloc, scan_stack_type &stack,
+                       threadinfo &ti) const {
+    masstree_.scan_range_next(stack, ti);
+    if (stack.no_value()) {
+      return false;
+    } else {
+      rloc = *stack.get_value();
+      return true;
+    }
+  }
+
+  bool rscan_range_first(const Key &key, RecordLocation &rloc,
+                  bool emit_firstkey, scan_stack_type &stack,
+                  threadinfo &ti) const {
+    masstree_.rscan_range_first(Str(key.data, key.len),
+                   emit_firstkey, stack, ti);
+    if (stack.no_value()) {
+      return false;
+    } else {
+      rloc = *stack.get_value();
+      return true;
+    }
+  }
+
+  bool rscan_range_next(RecordLocation &rloc, scan_stack_type &stack,
+                       threadinfo &ti) const {
+    masstree_.rscan_range_next(stack, ti);
+    if (stack.no_value()) {
+      return false;
+    } else {
+      rloc = *stack.get_value();
+      return true;
+    }
   }
 
   // TODO

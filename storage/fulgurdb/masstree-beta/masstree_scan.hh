@@ -19,6 +19,7 @@
 #include "masstree_struct.hh"
 namespace Masstree {
 
+
 template <typename P>
 class scanstackelt {
   public:
@@ -30,6 +31,17 @@ class scanstackelt {
     typedef typename leaf_type::permuter_type permuter_type;
     typedef typename P::threadinfo_type threadinfo;
     typedef typename node_base<P>::nodeversion_type nodeversion_type;
+
+    enum ScanState {
+      scan_emit,
+      scan_find_next,
+      scan_down,
+      scan_up,
+      scan_retry,
+      scan_no_value
+    };
+
+    scanstackelt() {}
 
     leaf<P>* node() const {
         return n_;
@@ -47,6 +59,35 @@ class scanstackelt {
         return n.n_->compare_key(k, p);
     }
 
+    /* 检查scan状态 */
+    bool no_value() {
+        if (state_ == scan_no_value)
+            return true;
+        else
+            return false;
+    }
+
+    /* 获取当前scan状态下的entry */
+    typename leafvalue_type::value_type
+    get_value() {
+      return entry_.value();
+    }
+
+    // FIXME: reset every thing
+    void reset() {
+      root_ = nullptr;
+      scan_count_ = 0;
+    }
+
+private:
+    // 定义这个union是为了让keybuf是sizeof(ikey_type)的整数倍
+    union KeyBuf{
+        ikey_type x[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1)/sizeof(ikey_type)];
+        char s[MASSTREE_MAXKEYLEN];
+    };
+
+
+
   private:
     node_base<P>* root_;
     leaf<P>* n_;
@@ -54,19 +95,21 @@ class scanstackelt {
     permuter_type perm_;
     int ki_;
     small_vector<node_base<P>*, 2> node_stack_;
+    ScanState state_;
+    uint32_t scan_count_ = 0;
+    KeyBuf keybuf_;
+    key_type ka_;
+    leafvalue_type entry_;
 
-    enum { scan_emit, scan_find_next, scan_down, scan_up, scan_retry };
 
-    scanstackelt() {
-    }
 
     template <typename H>
-    int find_initial(H& helper, key_type& ka, bool emit_equal,
+    ScanState find_initial(H& helper, key_type& ka, bool emit_equal,
                      leafvalue_type& entry, threadinfo& ti);
     template <typename H>
-    int find_retry(H& helper, key_type& ka, threadinfo& ti);
+    ScanState find_retry(H& helper, key_type& ka, threadinfo& ti);
     template <typename H>
-    int find_next(H& helper, key_type& ka, leafvalue_type& entry);
+    ScanState find_next(H& helper, key_type& ka, leafvalue_type& entry);
 
     int kp() const {
         if (unsigned(ki_) < unsigned(perm_.size()))
@@ -162,7 +205,7 @@ struct reverse_scan_helper {
             N *next = n->safe_next();
             int cmp;
             if (!next
-                || (cmp = ::compare(k.ikey(), next->ikey_bound())) < 0
+                || (cmp = Masstree::compare(k.ikey(), next->ikey_bound())) < 0
                 || (cmp == 0 && k.length() == 0))
                 return v;
             n = next;
@@ -177,8 +220,26 @@ struct reverse_scan_helper {
 };
 
 
+/**
+@brief
+  给定start key @arg[ka], 多次调用find_initial后,
+  能够定位到scan operation的起始leafvalue.
+  单次调用的作用是traverse down一个layer.
+
+@return value
+  @retval1 scan_down 需要继续调用fina_initial下降到masstree的叶子节点
+  @retval2 scan_emit 已经下降到masstree的叶子节点, 发射leaf value
+  @retval3 scan_find_next 当前layer的leafvalue仅仅是key的low bound,
+           (leafvalue可能是是value, 也可能指向next layer)
+@pre condition
+  root_指向find_initial过程中的layer的根节点 (每个layer都是一颗B+树)
+@post condition
+  n_指向包含[output]leafvalue的leafnode.
+  ki_指向permutation vector中的lower bound
+*/
 template <typename P> template <typename H>
-int scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
+typename scanstackelt<P>::ScanState
+scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
                                   leafvalue_type& entry, threadinfo& ti)
 {
     key_indexed_position kx;
@@ -195,6 +256,13 @@ int scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
     n_->prefetch();
     perm_ = n_->permutation();
 
+    /**
+      kx是leaf value的逻辑指针,
+      kx.i表示leaf node permutation的index
+      kx.p表示leaf value array的index
+      当kx.p >= 0时, kx指向key完全匹配的leafvalue.
+      当kx.p < 0时, kx.i指向key的low bound
+    */
     kx = helper.lower_with_position(ka, this);
     if (kx.p >= 0) {
         keylenx = n_->keylenx_[kx.p];
@@ -236,7 +304,8 @@ int scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
 }
 
 template <typename P> template <typename H>
-int scanstackelt<P>::find_retry(H& helper, key_type& ka, threadinfo& ti)
+typename scanstackelt<P>::ScanState
+scanstackelt<P>::find_retry(H& helper, key_type& ka, threadinfo& ti)
 {
  retry:
     n_ = root_->reach_leaf(ka, v_, ti);
@@ -249,8 +318,17 @@ int scanstackelt<P>::find_retry(H& helper, key_type& ka, threadinfo& ti)
     return scan_find_next;
 }
 
+/**
+@brief
+scan过程中,通过find_next找到下一个value
+
+@pre conditon
+(n_,ki_)指向一个leafvalue, 从这个leafvalue出发,
+进行最左遍历能够得到next value.
+*/
 template <typename P> template <typename H>
-int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
+typename scanstackelt<P>::ScanState
+scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
 {
     int kp;
 
@@ -260,6 +338,7 @@ int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
  retry_entry:
     kp = this->kp();
     if (kp >= 0) {
+    // next value仍然可以通过n_找到
         ikey_type ikey = n_->ikey0_[kp];
         int keylenx = n_->keylenx_[kp];
         int keylen = keylenx;
@@ -271,6 +350,7 @@ int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
 
         if (n_->has_changed(v_))
             goto changed;
+        // 向上回溯的过程中发现已经这个node是已经遍历过的
         else if (helper.is_duplicate(ka, ikey, keylenx)) {
             ki_ = helper.next(ki_);
             goto retry_entry;
@@ -290,6 +370,7 @@ int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
         }
     }
 
+    // next value不在同一leaf节点上时, 直接跳转到这里
     if (!n_->has_changed(v_)) {
         n_ = helper.advance(n_, ka);
         if (!n_) {
@@ -300,6 +381,7 @@ int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
     }
 
  changed:
+    // node发生了变化 或者 到达了新的leaf节点
     v_ = helper.stable(n_, ka);
     perm_ = n_->permutation();
     ki_ = helper.lower(ka, this);
@@ -323,6 +405,12 @@ int basic_table<P>::scan(H helper,
     memcpy(keybuf.s, firstkey.s, firstkey.len);
     key_type ka(keybuf.s, firstkey.len);
 
+    /**
+      stack记录了scan过程中的状态, 包含:
+      1. root_: layer的root_节点
+      2. n_: layer中的叶子节点
+      3. ki_: 叶子节点中,permutation vector中的偏移量
+    */
     typedef scanstackelt<P> mystack_type;
     mystack_type stack;
     stack.root_ = root_;
@@ -368,6 +456,11 @@ int basic_table<P>::scan(H helper,
             } while (unlikely(ka.empty()));
             stack.v_ = helper.stable(stack.n_, ka);
             stack.perm_ = stack.n_->permutation();
+            /*
+              由于ki_没有通过stack记录,所以需要重新确定low bound;
+              下一次调用find_next时,会发现重复遍历了leafvalue,
+              然后会递增ki_调整到正确的位置
+            */
             stack.ki_ = helper.lower(ka, &stack);
             goto find_next;
 
@@ -400,6 +493,214 @@ int basic_table<P>::rscan(Str firstkey, bool emit_firstkey,
                           threadinfo& ti) const
 {
     return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, ti);
+}
+
+template <typename P>
+int basic_table<P>::scan_range_first(Str firstkey, bool emit_firstkey,
+                         scanstackelt<P> &stack, threadinfo& ti) const
+{
+  return scan_range_first(forward_scan_helper(),
+           firstkey, emit_firstkey, stack, ti);
+}
+
+template <typename P>
+int basic_table<P>::scan_range_next(scanstackelt<P> &stack,
+                         threadinfo& ti) const
+{
+  return scan_range_next(forward_scan_helper(), stack, ti);
+}
+
+template <typename P>
+int basic_table<P>::rscan_range_first(Str firstkey, bool emit_firstkey,
+                         scanstackelt<P> &stack,
+                         threadinfo& ti) const
+{
+  return scan_range_first(reverse_scan_helper(),
+          firstkey, emit_firstkey, stack, ti);
+}
+
+template <typename P>
+int basic_table<P>::rscan_range_next(scanstackelt<P> &stack,
+                         threadinfo& ti) const
+{
+  return scan_range_next(reverse_scan_helper(), stack, ti);
+}
+
+/**
+mysql的scan操作要求存储引擎提供: index_read和index_next这两个索引接口.
+因此有必要在masstree这一层抽象出类似的接口.
+*/
+
+/**
+@brief 找到范围查询中第一条符合条件的记录
+
+@args
+  arg5 stack
+      stack记录了scan过程中的状态, 包含:
+      1. root_: layer的root_节点
+      2. n_: layer中的叶子节点
+      3. ki_: 叶子节点中,permutation vector中的偏移量
+      stack必须处于初始状态
+*/
+template <typename P> template <typename H>
+int basic_table<P>::scan_range_first(H helper,
+                         Str firstkey, bool emit_firstkey,
+                         scanstackelt<P> &stack,
+                         threadinfo& ti) const
+{
+    typedef typename node_type::key_type key_type;
+    typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
+    typedef scanstackelt<P> mystack_type;
+
+    masstree_precondition(firstkey.len <= (int) sizeof(stack.keybuf_));
+    memcpy(stack.keybuf_.s, firstkey.s, firstkey.len);
+    stack.ka_ = key_type(stack.keybuf_.s, firstkey.len);
+
+    stack.root_ = root_;
+    stack.entry_ = leafvalue_type::make_empty();
+
+    while (1) {
+        stack.state_ = stack.find_initial(helper, stack.ka_,
+                emit_firstkey, stack.entry_, ti);
+        //scanner.visit_leaf(stack, stack.ka_, ti);
+        if (stack.state_ != mystack_type::scan_down)
+            break;
+        stack.ka_.shift();
+    }
+
+    while (1) {
+        switch (stack.state_) {
+        case mystack_type::scan_emit:
+        // scan_range_first在第一次emit后就可以返回了
+            ++stack.scan_count_;
+            /*
+            if (!scanner.visit_value(stack.ka_, stack.entry_.value(), ti)) {
+                stack.state_ = mystack_type::scan_finish;
+                goto done;
+            }
+            */
+            // 为后续遍历调整stack的状态
+            stack.ki_ = helper.next(stack.ki_);
+            stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
+            goto done;
+
+        case mystack_type::scan_find_next:
+        find_next:
+            stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
+            //if (stack.state_ != mystack_type::scan_up)
+                //scanner.visit_leaf(stack, stack.ka_, ti);
+            break;
+
+        case mystack_type::scan_up:
+            do {
+                if (stack.node_stack_.empty()) {
+                    stack.state_ = mystack_type::scan_no_value;
+                    goto done;
+                }
+                stack.n_ = static_cast<leaf<P>*>(stack.node_stack_.back());
+                stack.node_stack_.pop_back();
+                stack.root_ = stack.node_stack_.back();
+                stack.node_stack_.pop_back();
+                stack.ka_.unshift();
+            } while (unlikely(stack.ka_.empty()));
+            stack.v_ = helper.stable(stack.n_, stack.ka_);
+            stack.perm_ = stack.n_->permutation();
+            /*
+              由于ki_没有通过stack记录,所以需要重新确定low bound;
+              下一次调用find_next时,会发现重复遍历了leafvalue,
+              然后会递增ki_调整到正确的位置
+            */
+            stack.ki_ = helper.lower(stack.ka_, &stack);
+            goto find_next;
+
+        case mystack_type::scan_down:
+            helper.shift_clear(stack.ka_);
+            goto retry;
+
+        case mystack_type::scan_retry:
+        retry:
+            stack.state_ = stack.find_retry(helper, stack.ka_, ti);
+            break;
+
+        case mystack_type::scan_no_value:
+            goto done;
+            break;
+        }
+    }
+
+ done:
+    return stack.scan_count_;
+}
+
+template <typename P> template <typename H>
+int basic_table<P>::scan_range_next(H helper,
+                         scanstackelt<P> &stack,
+                         threadinfo& ti) const
+{
+    typedef scanstackelt<P> mystack_type;
+
+    while (1) {
+        switch (stack.state_) {
+        case mystack_type::scan_emit:
+        // scan_range_next每次emit之后需要返回
+            ++stack.scan_count_;
+            /*
+            if (!scanner.visit_value(stack.ka_, stack.entry_.value(), ti)) {
+                stack.state_ = mystack_type::scan_finish;
+                goto done;
+            }
+            */
+            // 为后续遍历调整stack的状态
+            stack.ki_ = helper.next(stack.ki_);
+            stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
+            goto done;
+
+        case mystack_type::scan_find_next:
+        find_next:
+            stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
+            //if (stack.state_ != mystack_type::scan_up)
+                //scanner.visit_leaf(stack, stack.ka_, ti);
+            break;
+
+        case mystack_type::scan_up:
+            do {
+                if (stack.node_stack_.empty()) {
+                    stack.state_ = mystack_type::scan_no_value;
+                    goto done;
+                }
+                stack.n_ = static_cast<leaf<P>*>(stack.node_stack_.back());
+                stack.node_stack_.pop_back();
+                stack.root_ = stack.node_stack_.back();
+                stack.node_stack_.pop_back();
+                stack.ka_.unshift();
+            } while (unlikely(stack.ka_.empty()));
+            stack.v_ = helper.stable(stack.n_, stack.ka_);
+            stack.perm_ = stack.n_->permutation();
+            /*
+              由于ki_没有通过stack记录,所以需要重新确定low bound;
+              下一次调用find_next时,会发现重复遍历了leafvalue,
+              然后会递增ki_调整到正确的位置
+            */
+            stack.ki_ = helper.lower(stack.ka_, &stack);
+            goto find_next;
+
+        case mystack_type::scan_down:
+            helper.shift_clear(stack.ka_);
+            goto retry;
+
+        case mystack_type::scan_retry:
+        retry:
+            stack.state_ = stack.find_retry(helper, stack.ka_, ti);
+            break;
+
+        case mystack_type::scan_no_value:
+            goto done;
+            break;
+        }
+    }
+
+ done:
+    return stack.scan_count_;
 }
 
 } // namespace Masstree

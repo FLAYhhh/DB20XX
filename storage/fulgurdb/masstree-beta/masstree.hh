@@ -47,6 +47,7 @@ template <int LW, int IW> constexpr int nodeparams<LW, IW>::leaf_width;
 template <int LW, int IW> constexpr int nodeparams<LW, IW>::internode_width;
 template <int LW, int IW> constexpr int nodeparams<LW, IW>::debug_level;
 
+template <typename P> class scanstackelt;
 template <typename P> class node_base;
 template <typename P> class leaf;
 template <typename P> class internode;
@@ -55,6 +56,7 @@ template <typename P> class key;
 template <typename P> class basic_table;
 template <typename P> class unlocked_tcursor;
 template <typename P> class tcursor;
+
 
 template <typename P>
 class basic_table {
@@ -82,6 +84,22 @@ class basic_table {
     template <typename F>
     int rscan(Str firstkey, bool matchfirst, F& scanner, threadinfo& ti) const;
 
+
+
+    int scan_range_first(Str firstkey, bool emit_firstkey,
+                         scanstackelt<P> &stack,
+                         threadinfo& ti) const;
+
+    int scan_range_next(scanstackelt<P> &stack,
+                         threadinfo& ti) const;
+
+    int rscan_range_first(Str firstkey, bool emit_firstkey,
+                         scanstackelt<P> &stack,
+                         threadinfo& ti) const;
+
+    int rscan_range_next(scanstackelt<P> &stack,
+                         threadinfo& ti) const;
+
     inline void print(FILE* f = 0) const;
 
   private:
@@ -90,6 +108,17 @@ class basic_table {
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,
              F& scanner, threadinfo& ti) const;
+
+    template <typename H>
+    int scan_range_first(H helper,
+                         Str firstkey, bool emit_firstkey,
+                         scanstackelt<P> &stack,
+                         threadinfo& ti) const;
+
+    template <typename H>
+    int scan_range_next(H helper,
+                         scanstackelt<P> &stack,
+                         threadinfo& ti) const;
 
     friend class unlocked_tcursor<P>;
     friend class tcursor<P>;

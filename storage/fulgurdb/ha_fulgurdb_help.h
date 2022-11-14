@@ -21,3 +21,4 @@
 */
 void generate_fulgur_schema(TABLE *form, fulgurdb::Schema &schema);
 fulgurdb::threadinfo_type *get_threadinfo();
+fulgurdb::ThreadLocal *get_thread_ctx();

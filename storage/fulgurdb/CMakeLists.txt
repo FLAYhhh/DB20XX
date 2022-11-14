@@ -34,6 +34,7 @@ masstree-beta/kvthread.cc
 masstree-beta/str.cc
 masstree-beta/string.cc
 masstree-beta/string_slice.cc
+masstree-beta/straccum.cc
 )
 
 add_compile_options(-Wall -Werror)

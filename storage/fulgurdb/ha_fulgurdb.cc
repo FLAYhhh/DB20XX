@@ -324,19 +324,37 @@ int ha_fulgurdb::delete_row(const uchar *) {
   return HA_ERR_WRONG_COMMAND;
 }
 
-int ha_fulgurdb::index_read(uchar *buf, const uchar *key, uint key_len,
+int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
                          enum ha_rkey_function find_flag) {
-  //FIXME: 当前fulgurdb只支持点查询
-  std::assert(find_flag == HA_READ_KEY_EXACT);
   fulgurdb::Key fgdb_key(reinterpret_cast<char *>(
                          const_cast<uchar *>(key)), key_len, false);
   fulgurdb::RecordLocation rloc;
   fulgurdb::threadinfo_type *ti = get_threadinfo();
+  fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
   bool found = false;
-  found = se_table_->get_record_from_index(active_index, fgdb_key, rloc, *ti);
+
+  // flag的定义见include/my_base.h
+  scan_direction_ = find_flag;
+  if (find_flag == HA_READ_KEY_EXACT) {
+    found = se_table_->get_record_from_index(active_index, fgdb_key, rloc, *ti);
+  } else if (find_flag == HA_READ_KEY_OR_NEXT) {
+    found = se_table_->index_scan_range_first(active_index,
+                   fgdb_key, rloc, true, *thd_ctx);
+  } else if (find_flag == HA_READ_AFTER_KEY) {
+    found = se_table_->index_scan_range_first(active_index,
+                   fgdb_key, rloc, false, *thd_ctx);
+  } else if (find_flag == HA_READ_KEY_OR_PREV) {
+    found = se_table_->index_rscan_range_first(active_index,
+                   fgdb_key, rloc, true, *thd_ctx);
+  } else if (find_flag == HA_READ_BEFORE_KEY) {
+    found = se_table_->index_rscan_range_first(active_index,
+                   fgdb_key, rloc, false, *thd_ctx);
+  } else {
+    //TODO:panic
+  }
 
   if (found) {
-    rloc.load_data_to_mysql((char *)buf, se_table_->get_schema());
+    rloc.load_data_to_mysql((char *)record, se_table_->get_schema());
     return 0;
   } else
     return HA_ERR_KEY_NOT_FOUND;
@@ -347,11 +365,32 @@ int ha_fulgurdb::index_read(uchar *buf, const uchar *key, uint key_len,
   Used to read forward through the index.
 */
 
-int ha_fulgurdb::index_next(uchar *) {
-  int rc;
-  DBUG_TRACE;
-  rc = HA_ERR_WRONG_COMMAND;
-  return rc;
+int ha_fulgurdb::index_next(uchar *record) {
+  fulgurdb::RecordLocation rloc;
+  fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
+  bool found = false;
+
+  switch (scan_direction_) {
+    case HA_READ_KEY_OR_NEXT:
+    case HA_READ_AFTER_KEY:
+      found = se_table_->index_scan_range_next(
+                 active_index, rloc, *thd_ctx);
+      break;
+    case HA_READ_KEY_OR_PREV:
+    case HA_READ_BEFORE_KEY:
+      found = se_table_->index_rscan_range_next(
+                 active_index, rloc, *thd_ctx);
+      break;
+    default:
+      //TODO:panic
+      break;
+  }
+
+  if (found) {
+    rloc.load_data_to_mysql((char *)record, se_table_->get_schema());
+    return 0;
+  } else
+    return HA_ERR_KEY_NOT_FOUND;
 }
 
 /**

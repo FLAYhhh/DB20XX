@@ -3,6 +3,7 @@
 #include "./schema.h"
 #include "./record_location.h"
 #include "./index.h"
+#include "./thread_local.h"
 
 namespace fulgurdb {
 class Table {
@@ -92,6 +93,40 @@ public:
   bool get_record_from_index(uint32_t idx, const Key &key,
               RecordLocation &rloc, threadinfo &ti) {
     return indexes_[idx]->get(key, rloc, ti);
+  }
+
+  bool index_scan_range_first(uint32_t idx, const Key &key,
+             RecordLocation &rloc, bool emit_firstkey,
+             ThreadLocal &thd_ctx) const {
+    thd_ctx.reset_masstree_scan_stack();
+    return indexes_[idx]->scan_range_first(key, rloc,
+                   emit_firstkey,
+                   thd_ctx.masstree_scan_stack_,
+                   *thd_ctx.ti_);
+  }
+
+  bool index_scan_range_next(uint32_t idx, RecordLocation &rloc,
+                       ThreadLocal &thd_ctx) const {
+    return indexes_[idx]->scan_range_next(rloc,
+                    thd_ctx.masstree_scan_stack_,
+                    *thd_ctx.ti_);
+  }
+
+  bool index_rscan_range_first(uint32_t idx, const Key &key,
+             RecordLocation &rloc, bool emit_firstkey,
+             ThreadLocal &thd_ctx) const {
+    thd_ctx.reset_masstree_scan_stack();
+    return indexes_[idx]->rscan_range_first(key, rloc,
+                   emit_firstkey,
+                   thd_ctx.masstree_scan_stack_,
+                   *thd_ctx.ti_);
+  }
+
+  bool index_rscan_range_next(uint32_t idx, RecordLocation &rloc,
+                       ThreadLocal &thd_ctx) const {
+    return indexes_[idx]->rscan_range_next(rloc,
+                    thd_ctx.masstree_scan_stack_,
+                    *thd_ctx.ti_);
   }
 
 private:

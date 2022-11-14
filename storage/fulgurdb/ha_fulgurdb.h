@@ -73,6 +73,12 @@ class ha_fulgurdb : public handler {
   fulgurdb::Table *se_table_;
   uint32_t cur_row_idx_;
 
+  /*
+    used by index_read() and index_next()
+    用于记录scan的方向
+  */
+  enum ha_rkey_function scan_direction_;
+
  public:
   ha_fulgurdb(handlerton *hton, TABLE_SHARE *table_arg);
   ~ha_fulgurdb() override = default;

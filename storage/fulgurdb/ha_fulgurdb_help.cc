@@ -135,3 +135,8 @@ fulgurdb::threadinfo_type *get_threadinfo() {
   fulgurdb::threadinfo_type *ti = tl->get_threadinfo();
   return ti;
 }
+
+fulgurdb::ThreadLocal *get_thread_ctx() {
+  return reinterpret_cast<fulgurdb::ThreadLocal *>
+         (current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr);
+}
