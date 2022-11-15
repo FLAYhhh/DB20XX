@@ -124,7 +124,7 @@ struct gc_layer_rcu_callback : public P::threadinfo_type::mrcu_callback {
         : root_(root), len_(prefix.length()) {
         memcpy(s_, prefix.data(), len_);
     }
-    void operator()(threadinfo& ti);
+    void operator()(threadinfo& ti) override;
     size_t size() const {
         return len_ + sizeof(*this);
     }
@@ -285,7 +285,7 @@ struct destroy_rcu_callback : public P::threadinfo_type::mrcu_callback {
     destroy_rcu_callback(node_base<P>* root)
         : root_(root), count_(0) {
     }
-    void operator()(threadinfo& ti);
+    void operator()(threadinfo& ti) override;
     static void make(node_base<P>* root, Str prefix, threadinfo& ti);
   private:
     static inline node_base<P>** link_ptr(node_base<P>* n);

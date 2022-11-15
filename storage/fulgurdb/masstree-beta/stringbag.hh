@@ -88,7 +88,7 @@ class stringbag {
         assert(capacity >= firstpos && capacity <= max_size());
         size_ = firstpos;
         capacity_ = capacity - 1;
-        memset(info_, 0, sizeof(info_type) * width);
+        memset(&info_, 0, sizeof(info_type) * width);
     }
 
     /** @brief Return the capacity used to construct this bag. */

@@ -6,11 +6,9 @@ namespace fulgurdb {
 class Schema {
 friend class Table;
 public:
-  Schema() {}
-  Schema(const Schema &other):
-    fields_(other.fields_),
-    total_size_(other.total_size_),
-    null_byte_length_(other.null_byte_length_){}
+  Schema() = default;
+  Schema(const Schema &other) = default;
+
 
   /**
   @brief 顺序地向schema中加入一个field

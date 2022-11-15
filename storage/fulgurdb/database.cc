@@ -32,3 +32,4 @@ Table *Database::get_table(const std::string table_name) {
 }
 
 }
+
