@@ -34,6 +34,9 @@
 
 ## 使用说明
 ### 1. 编译
+**Tool chain version**
+- g++-10
+- cmake 3.24.0
 
 ```shell
 $ mkdir build
