@@ -1,32 +1,29 @@
-# Prerequisites
-*.d
+# emacs backup files
+*~
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# Misc tags/ctags files
+tags
+TAGS
+TAGS_sorted_by_file
 
-# Precompiled Headers
-*.gch
-*.pch
+# googletest files
+source_downloads
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+# Vim swap files
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
 
-# Fortran module files
-*.mod
-*.smod
+# Configuration files for Visual Studio Code
+.vscode/
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
+build/
+datatool/
+datatools/
+__pycache__/
+heatwaveml.*
+automl.egg-info/
+_userconf.sh
+scalability_jobs_*
