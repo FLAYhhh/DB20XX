@@ -35,8 +35,9 @@
 ## 使用说明
 ### 1. 编译
 **Tool chain version**
-- g++-10
-- cmake 3.24.0
+ubuntu18.04:
+- g++-8
+- cmake 3.24.3
 
 ```shell
 $ mkdir build
