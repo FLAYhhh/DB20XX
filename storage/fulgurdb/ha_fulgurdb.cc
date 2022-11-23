@@ -265,11 +265,11 @@ int ha_fulgurdb::close(void) {
 
 int ha_fulgurdb::write_row(uchar *sl_record) {
   DBUG_TRACE;
+  fulgurdb::ThreadLocal *tl = get_thread_ctx();
   fulgurdb::threadinfo_type *ti = get_threadinfo();
 
-  fulgurdb::RecordLocation rloc = se_table_->alloc_record();
+  fulgurdb::RecordLocation rloc = se_table_->alloc_record(tl);
   rloc.load_data_from_mysql((char *)sl_record, se_table_->get_schema());
-  se_table_->insert_record(rloc);
   se_table_->insert_record_to_index(rloc, *ti);
 
   return 0;
@@ -329,8 +329,8 @@ int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
   fulgurdb::Key fgdb_key(reinterpret_cast<char *>(
                          const_cast<uchar *>(key)), key_len, false);
   fulgurdb::RecordLocation rloc;
-  fulgurdb::threadinfo_type *ti = get_threadinfo();
   fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
+  fulgurdb::threadinfo_type *ti = thd_ctx->get_threadinfo();
   bool found = false;
 
   // flag的定义见include/my_base.h
@@ -455,12 +455,14 @@ int ha_fulgurdb::index_last(uchar *) {
 */
 int ha_fulgurdb::rnd_init(bool) {
   DBUG_TRACE;
-  cur_row_idx_ = 0;
+  seq_scan_cursor_.reset();
+
   return 0;
 }
 
 int ha_fulgurdb::rnd_end() {
   DBUG_TRACE;
+  // do nothing
   return 0;
 }
 
@@ -481,15 +483,16 @@ int ha_fulgurdb::rnd_end() {
 */
 int ha_fulgurdb::rnd_next(uchar *sl_record) {
   DBUG_TRACE;
-  char *fulgur_row_data = se_table_->get_record_data(cur_row_idx_++);
-  if (fulgur_row_data == nullptr) {
+  int ret = fulgurdb::FULGUR_SUCCESS;
+
+  ret = se_table_->table_scan_get(seq_scan_cursor_);
+  if (ret == fulgurdb::FULGUR_END_OF_TABLE)
     return HA_ERR_END_OF_FILE;
-  }
 
-  fulgurdb::RecordLocation rloc(fulgur_row_data);
-  rloc.load_data_to_mysql((char *)sl_record, se_table_->get_schema());
-
+  seq_scan_cursor_.load_data_to_mysql((char *)sl_record,
+                               se_table_->get_schema());
   table->set_found_row();
+  seq_scan_cursor_.inc_cursor();
   return 0;
 }
 

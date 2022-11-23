@@ -9,7 +9,7 @@ typedef threadinfo threadinfo_type;
 class ThreadLocal {
 friend class Table;
 public:
-  ThreadLocal(uint32_t thread_id) {
+  ThreadLocal(uint32_t thread_id): thread_id_(thread_id) {
     ti_ = threadinfo::make(threadinfo::TI_PROCESS, thread_id);
   }
 
@@ -27,8 +27,13 @@ public:
     masstree_scan_stack_.reset();
   }
 
+  uint32_t get_thread_id() {
+    return thread_id_;
+  }
 
 private:
+  // logic thread id, get from mysql:current_thd->thread_id()
+  uint32_t thread_id_ = 0;
   threadinfo *ti_ = nullptr;
   scan_stack_type masstree_scan_stack_;
 };

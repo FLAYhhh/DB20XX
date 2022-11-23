@@ -54,6 +54,8 @@ public:
   /**
   @brief
     build key from a fulgurdb record
+  @args
+    arg1 record: record payload, without record header
   */
   std::unique_ptr<Key> build_key(const char *record) {
     char *key_data = (char *)malloc(sizeof(keyinfo_.key_len));

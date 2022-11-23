@@ -71,7 +71,12 @@ class ha_fulgurdb : public handler {
   Fulgurdb_share *get_share();  ///< Get the share
 
   fulgurdb::Table *se_table_;
-  uint32_t cur_row_idx_;
+
+  /** for sequential scan
+      rnd_init()
+      rnd_next()
+  */
+  fulgurdb::RecordLocation seq_scan_cursor_;
 
   /*
     used by index_read() and index_next()

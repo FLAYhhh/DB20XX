@@ -4,12 +4,23 @@
 #include "./record_location.h"
 #include "./index.h"
 #include "./thread_local.h"
+#include "./record_block.h"
+#include "./return_status.h"
+#include "./cuckoo_map.h"
 
 namespace fulgurdb {
+
+struct TableScanCursor {
+  uint32_t block_id_;
+  uint32_t idx_in_block_;
+};
+
 class Table {
 public:
   Table(const std::string &table_name, Schema &schema):
-     table_name_(table_name), schema_(schema){}
+     table_name_(table_name), schema_(schema) {
+     init_block_writers();
+  }
 
   /**
   @brief get table schema
@@ -25,30 +36,61 @@ public:
   @return
     location to the record
   */
-  RecordLocation alloc_record() {
-    char *data = (char *)malloc(schema_.total_size_);
-    return RecordLocation(data);
-  }
+  RecordLocation alloc_record(ThreadLocal *thd_ctx) {
+    uint32_t writer_idx = thd_ctx->get_thread_id()
+                             % PARALLEL_WRITER_NUM;
 
+    RecordLocation rec_loc;
+    RecordBlock *block = nullptr;
+    int status = FULGUR_SUCCESS;
+    do {
+      block = record_writers_[writer_idx];
+      status = block->alloc_record(rec_loc);
+    } while (status != FULGUR_SUCCESS);
+
+    // 仅有一个线程获得了block的最后一条记录,
+    // 由该线程负责更新这个位置的record_writer,
+    // 这种方法确保了只有一个线程会负责替换writer,
+    // 避免了并发修改
+    if (block->is_last_record(rec_loc)) {
+      record_writers_[writer_idx] = alloc_block();
+    }
+
+    // insert the record to index
+    threadinfo *ti = thd_ctx->get_threadinfo();
+    insert_record_to_index(rec_loc, *ti);
+
+    return rec_loc;
+  }
 
   /**
   @brief
-    insert a record to table
+    Table scan without index
+    User should advance scan_cursor mannually before call this function.
+    This function will correct scan_cursor if idx_in_block_ exceed limit 
   */
-  void insert_record(const RecordLocation &rloc) {
-    records_.push_back(rloc.data_);
-  }
+  int table_scan_get(RecordLocation &scan_cursor) {
+    if (scan_cursor.record_ == nullptr) {
+      table_scan_cached_block_ = get_block(scan_cursor.block_id_);
+    }
 
+    // jump to next useful block
+    while (scan_cursor.idx_in_block_ ==
+        table_scan_cached_block_->valid_record_num_) {
+      // have reached the end of current block, jump to next
+      scan_cursor.block_id_ += 1;
+      scan_cursor.idx_in_block_ = 0;
+      table_scan_cached_block_ = get_block(scan_cursor.block_id_);
 
-  /**
-  @brief
-    get record with sequence number in the table
-  */
-  char* get_record_data(uint32_t row_idx) const {
-    if (row_idx >= records_.size())
-      return nullptr;
-    else
-      return records_[row_idx];
+      if (scan_cursor.block_id_ >= next_block_id_)
+        return FULGUR_END_OF_TABLE;
+    }
+
+    int status = FULGUR_SUCCESS;
+    status = table_scan_cached_block_->get_record(scan_cursor);
+    assert(status == FULGUR_SUCCESS);
+
+    return FULGUR_SUCCESS;
   }
 
   /**
@@ -72,7 +114,8 @@ public:
   */
   void insert_record_to_index(uint32_t idx, const RecordLocation &rloc,
                          threadinfo &ti) {
-    std::unique_ptr<Key> key = indexes_[idx]->build_key(rloc.get_record());
+    std::unique_ptr<Key> key = indexes_[idx]->build_key(
+                           rloc.get_record_payload());
     indexes_[idx]->put(*key, rloc, ti);
   }
 
@@ -130,9 +173,70 @@ public:
   }
 
 private:
+  //FIXME: use per-thread allocator
+  RecordBlock *alloc_block() {
+    uint32_t complete_record_length = sizeof(RecordHeader)
+                      + schema_.get_record_data_length();
+    uint32_t block_size = sizeof(RecordBlock) +
+                  records_in_block_ * complete_record_length;
+    RecordBlock *block = (RecordBlock*)malloc(block_size);
+    block = new (block) RecordBlock;
+    block->record_length_ = complete_record_length;
+    block->record_capacity_ = records_in_block_;
+    block->block_id_ = next_block_id_.fetch_add(1, std::memory_order_relaxed);
+
+    return block;
+  }
+
+  /**
+  @brief add a block to table store
+  */
+  void add_block(RecordBlock *block) {
+    record_blocks_.Upsert(block->block_id_, block);
+  }
+
+  /**
+  @brief given a block id, get the block address of the table store
+  */
+  RecordBlock* get_block(uint32_t block_id) {
+    RecordBlock *block;
+    record_blocks_.Find(block_id, block);
+    return block;
+  }
+
+  /**
+  @brief
+    initialize block writers, each thread delegate its write operation
+    to a block writer with index = thread_id % PARALLEL_WRITER_NUM.
+  */
+  void init_block_writers() {
+    for (size_t i = 0; i < PARALLEL_WRITER_NUM; i++) {
+      record_writers_[i] = alloc_block();
+      add_block(record_writers_[i]);
+    }
+  }
+
+
+private:
+  // static members
+  static const uint32_t PARALLEL_WRITER_NUM = 16;
+
+private:
+  // table metadata
   std::string table_name_;
   Schema schema_;
-  std::vector<char *> records_;
+
+  // table storage
+  std::atomic<uint32_t> next_block_id_;
+  const uint32_t DEFAULT_RECORDS_PER_BLOCK = 1024;
+  uint32_t records_in_block_ = DEFAULT_RECORDS_PER_BLOCK;
+  CuckooMap<uint32_t, RecordBlock*> record_blocks_;
+
+  std::array<RecordBlock*, PARALLEL_WRITER_NUM> record_writers_;
+
+
+  //table scan
+  RecordBlock *table_scan_cached_block_;
 
   // index
   std::vector<MasstreeIndex *> indexes_;

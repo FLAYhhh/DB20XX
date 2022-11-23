@@ -1,8 +1,9 @@
 #include "./record_location.h"
+#include "./record.h"
 
 namespace fulgurdb {
 void RecordLocation::load_data_from_mysql(char *mysql_row_data, const Schema &schema) {
-  char *fulgur_row_data = data_;
+  char *fulgur_row_data = record_ + sizeof(RecordHeader);
 
   // store null bytes
   uint32_t null_bytes = schema.get_null_byte_length();
@@ -50,7 +51,7 @@ void RecordLocation::load_data_from_mysql(char *mysql_row_data, const Schema &sc
 }
 
 void RecordLocation::load_data_to_mysql(char *mysql_row_data, const Schema &schema) {
-  char *fulgur_row_data = data_;
+  char *fulgur_row_data = record_ + sizeof(RecordHeader);
   // restore null bytes
   uint32_t null_bytes = schema.get_null_byte_length();
   memcpy(mysql_row_data, fulgur_row_data, null_bytes);
@@ -90,6 +91,9 @@ void RecordLocation::load_data_to_mysql(char *mysql_row_data, const Schema &sche
       }
     }
   }
+}
+const char *RecordLocation::get_record_payload() const {
+  return record_ + sizeof(RecordHeader);
 }
 
 }

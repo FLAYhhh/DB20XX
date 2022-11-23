@@ -39,6 +39,7 @@ public:
   */
   void set_null_byte_length(uint32_t len) {
     null_byte_length_ = len;
+    total_size_ += len;
   }
 
   /**
@@ -56,8 +57,14 @@ public:
     return fields_[idx].data_bytes_;
   }
 
+  uint32_t get_record_data_length() {
+    return total_size_;
+  }
+
 private:
   std::vector<Field> fields_;
+
+  // total_size_ = null_byte_length + all fields bytes
   uint32_t total_size_ = 0;
   uint32_t null_byte_length_ = 0;
 };
