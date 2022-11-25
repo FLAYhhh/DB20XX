@@ -11,6 +11,7 @@ public:
   }
 
   void set_last_reader_commitid(uint64_t commit_id) {
+    (void) commit_id;
     //FIXME
   }
 
