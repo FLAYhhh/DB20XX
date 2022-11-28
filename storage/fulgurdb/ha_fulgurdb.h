@@ -72,11 +72,17 @@ class ha_fulgurdb : public handler {
 
   fulgurdb::Table *se_table_;
 
-  /** for sequential scan
-      rnd_init()
-      rnd_next()
+  /**
+     for sequential scan
+     rnd_init()
+     rnd_next()
   */
   fulgurdb::RecordLocation seq_scan_cursor_;
+
+  /**
+    for transaction
+  */
+   bool acquire_owner;
 
   /*
     used by index_read() and index_next()

@@ -5,6 +5,7 @@
 #include "./masstree-beta/masstree_tcursor.hh"
 #include "./masstree-beta/masstree_scan.hh"
 #include "./record_location.h"
+#include "index_indirection.h"
 
 namespace fulgurdb {
 
@@ -46,9 +47,9 @@ public:
   Index(const KeyInfo &keyinfo):keyinfo_(keyinfo) {}
   ~Index() {}
 
-  virtual bool get(const Key &key, RecordLocation &tloc, threadinfo &ti) const = 0;
+  virtual bool get(const Key &key, RecordPtr *&p_record_ptr, threadinfo &ti) const = 0;
 
-  virtual bool put(const Key &key, const RecordLocation &tloc, threadinfo &ti) = 0;
+  virtual bool put(const Key &key, RecordPtr *p_record_ptr, threadinfo &ti) = 0;
 
 
   /**
@@ -80,7 +81,7 @@ private:
 
 
 struct fulgurdb_masstree_params : public nodeparams<15, 15> {
-  typedef RecordLocation* value_type;
+  typedef RecordPtr* value_type;
   typedef value_print<value_type> value_print_type;
   typedef threadinfo threadinfo_type;
 };
@@ -96,7 +97,7 @@ typedef scanstackelt<nodeparam_type> scan_stack_type;
 
 class MasstreeIndex: public Index {
   typedef basic_table<fulgurdb_masstree_params> fulgur_masstree_type;
-  typedef RecordLocation* leafvalue_type;
+  typedef RecordPtr* leafvalue_type;
 public:
   MasstreeIndex(void) {}
   MasstreeIndex(const KeyInfo &keyinfo):Index(keyinfo) {}
@@ -119,14 +120,14 @@ public:
     @retval1 true: first put
     @retval2 false: not first put, update old value
   */
-  bool put(const Key &key, const RecordLocation &rloc, threadinfo &ti) override {
+  bool put(const Key &key, RecordPtr *p_record_ptr, threadinfo &ti) override {
     typename fulgur_masstree_type::cursor_type lp(masstree_, Str(key.data, key.len));
     bool found = lp.find_insert(ti);
     if (!found) {
       ti.observe_phantoms(lp.node());
     }
 
-    apply_put(lp.value(), rloc, ti);
+    apply_put(lp.value(), p_record_ptr, ti);
     lp.finish(1, ti);
     return found;
   }
@@ -139,17 +140,17 @@ public:
       @retval2 false: key doesnot exist
     FIXME: same problem with apply_put
   */
-  bool get(const Key &key, RecordLocation &rloc, threadinfo &ti) const override {
+  bool get(const Key &key, RecordPtr *&p_record_ptr, threadinfo &ti) const override {
     typename fulgur_masstree_type::unlocked_cursor_type lp(masstree_, Str(key.data, key.len));
     bool found = lp.find_unlocked(ti);
     if (found)
-      rloc = *lp.value();
+      p_record_ptr = lp.value();
 
     return found;
   }
 
 
-  bool scan_range_first(const Key &key, RecordLocation &rloc,
+  bool scan_range_first(const Key &key, RecordPtr *&p_record_ptr,
                   bool emit_firstkey, scan_stack_type &stack,
                   threadinfo &ti) const{
     masstree_.scan_range_first(Str(key.data, key.len),
@@ -157,23 +158,23 @@ public:
     if (stack.no_value()) {
       return false;
     } else {
-      rloc = *stack.get_value();
+      p_record_ptr = stack.get_value();
       return true;
     }
   }
 
-  bool scan_range_next(RecordLocation &rloc, scan_stack_type &stack,
+  bool scan_range_next(RecordPtr *&p_record_ptr, scan_stack_type &stack,
                        threadinfo &ti) const {
     masstree_.scan_range_next(stack, ti);
     if (stack.no_value()) {
       return false;
     } else {
-      rloc = *stack.get_value();
+      p_record_ptr = stack.get_value();
       return true;
     }
   }
 
-  bool rscan_range_first(const Key &key, RecordLocation &rloc,
+  bool rscan_range_first(const Key &key, RecordPtr *&p_record_ptr,
                   bool emit_firstkey, scan_stack_type &stack,
                   threadinfo &ti) const {
     masstree_.rscan_range_first(Str(key.data, key.len),
@@ -181,18 +182,18 @@ public:
     if (stack.no_value()) {
       return false;
     } else {
-      rloc = *stack.get_value();
+      p_record_ptr = stack.get_value();
       return true;
     }
   }
 
-  bool rscan_range_next(RecordLocation &rloc, scan_stack_type &stack,
+  bool rscan_range_next(RecordPtr *&p_record_ptr, scan_stack_type &stack,
                        threadinfo &ti) const {
     masstree_.rscan_range_next(stack, ti);
     if (stack.no_value()) {
       return false;
     } else {
-      rloc = *stack.get_value();
+      p_record_ptr = stack.get_value();
       return true;
     }
   }
@@ -208,9 +209,9 @@ private:
   FIXME: masstree should manage leafvalue carefully to avoid concurrent problems.
   */
   void apply_put(leafvalue_type &value,
-                 const RecordLocation &rloc, threadinfo &ti) {
+                 RecordPtr *p_record_ptr, threadinfo &ti) {
     (void) ti; //FIXME thread local内存池分配value的内存
-    value = new RecordLocation(rloc);
+    value = p_record_ptr;
   }
 
 private:

@@ -92,8 +92,13 @@ void RecordLocation::load_data_to_mysql(char *mysql_row_data, const Schema &sche
     }
   }
 }
-const char *RecordLocation::get_record_payload() const {
+
+char *RecordLocation::get_record_payload() const{
   return record_ + sizeof(RecordHeader);
+}
+
+RecordHeader *RecordLocation::get_record_header() const{
+  return reinterpret_cast<RecordHeader*>(record_);
 }
 
 }

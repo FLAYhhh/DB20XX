@@ -4,7 +4,8 @@
 
 namespace fulgurdb {
 
-//class Record;
+class RecordHeader;
+class Record;
 class RecordLocation {
 friend class Table;
 friend class RecordBlock;
@@ -32,13 +33,14 @@ public:
   void load_data_from_mysql(char *mysql_row_data, const Schema &schema);
   void load_data_to_mysql(char *mysql_row_data, const Schema &schema);
 
-  const char *get_record_payload() const;
+  char *get_record_payload() const;
+  RecordHeader *get_record_header() const;
 
 
 private:
   uint32_t block_id_ = 0;
   uint32_t idx_in_block_ = 0;
-  char *record_ = nullptr;
+  Record *record_ = nullptr;
 };
 
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include "./masstree-beta/kvthread.hh"
 #include "./index.h"
+#include "transaction.h"
 
 namespace fulgurdb {
 
@@ -31,11 +32,17 @@ public:
     return thread_id_;
   }
 
+  TransactionContext *get_transaction_context() {
+    return &txn_ctx_;
+  }
+
 private:
   // logic thread id, get from mysql:current_thd->thread_id()
   uint32_t thread_id_ = 0;
   threadinfo *ti_ = nullptr;
+  //FIXME: move to handle
   scan_stack_type masstree_scan_stack_;
+  TransactionContext txn_ctx_;
 };
 
 }

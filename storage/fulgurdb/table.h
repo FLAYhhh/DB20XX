@@ -1,4 +1,6 @@
 #pragma once
+#include <atomic>
+#include "index_indirection.h"
 #include "utils.h"
 #include "./schema.h"
 #include "./record_location.h"
@@ -20,6 +22,7 @@ public:
   Table(const std::string &table_name, Schema &schema):
      table_name_(table_name), schema_(schema) {
      init_block_writers();
+     init_record_ptr_allocators();
   }
 
   /**
@@ -58,7 +61,21 @@ public:
 
     // insert the record to index
     threadinfo *ti = thd_ctx->get_threadinfo();
-    insert_record_to_index(rec_loc, *ti);
+    RecordPtrBlock *record_ptr_block = nullptr;
+    RecordPtr *p_record_ptr = nullptr; //pointer to RecordPtr
+    status = FULGUR_SUCCESS;
+    do {
+      record_ptr_block = record_ptr_allocators_[writer_idx];
+      status = record_ptr_block->alloc_record_ptr(p_record_ptr);
+    } while (status != FULGUR_SUCCESS);
+
+    if (record_ptr_block->is_last_record(p_record_ptr)) {
+      record_ptr_allocators_[writer_idx] = alloc_record_ptr_block();
+    }
+
+    insert_record_to_index(p_record_ptr, *ti);
+
+    rec_loc.record_->set_indirection(p_record_ptr);
 
     return rec_loc;
   }
@@ -112,16 +129,16 @@ public:
   @brief
     insert record location to index
   */
-  void insert_record_to_index(uint32_t idx, const RecordLocation &rloc,
+  void insert_record_to_index(uint32_t idx, RecordPtr *p_record_ptr,
                          threadinfo &ti) {
     std::unique_ptr<Key> key = indexes_[idx]->build_key(
-                           rloc.get_record_payload());
-    indexes_[idx]->put(*key, rloc, ti);
+                           p_record_ptr->get_record_payload());
+    indexes_[idx]->put(*key, p_record_ptr, ti);
   }
 
-  void insert_record_to_index(const RecordLocation &rloc, threadinfo &ti) {
+  void insert_record_to_index(RecordPtr *p_record_ptr, threadinfo &ti) {
     for (size_t i = 0; i < indexes_.size(); i++) {
-      insert_record_to_index(i, rloc, ti);
+      insert_record_to_index(i, p_record_ptr, ti);
     }
   }
 
@@ -134,40 +151,40 @@ public:
     @retval false: key does not exist
   */
   bool get_record_from_index(uint32_t idx, const Key &key,
-              RecordLocation &rloc, threadinfo &ti) {
-    return indexes_[idx]->get(key, rloc, ti);
+              RecordPtr *&p_record_ptr, threadinfo &ti) {
+    return indexes_[idx]->get(key, p_record_ptr, ti);
   }
 
   bool index_scan_range_first(uint32_t idx, const Key &key,
-             RecordLocation &rloc, bool emit_firstkey,
+             RecordPtr *&p_record_ptr, bool emit_firstkey,
              ThreadLocal &thd_ctx) const {
     thd_ctx.reset_masstree_scan_stack();
-    return indexes_[idx]->scan_range_first(key, rloc,
+    return indexes_[idx]->scan_range_first(key, p_record_ptr,
                    emit_firstkey,
                    thd_ctx.masstree_scan_stack_,
                    *thd_ctx.ti_);
   }
 
-  bool index_scan_range_next(uint32_t idx, RecordLocation &rloc,
+  bool index_scan_range_next(uint32_t idx, RecordPtr *&p_record_ptr,
                        ThreadLocal &thd_ctx) const {
-    return indexes_[idx]->scan_range_next(rloc,
+    return indexes_[idx]->scan_range_next(p_record_ptr,
                     thd_ctx.masstree_scan_stack_,
                     *thd_ctx.ti_);
   }
 
   bool index_rscan_range_first(uint32_t idx, const Key &key,
-             RecordLocation &rloc, bool emit_firstkey,
+             RecordPtr *&p_record_ptr, bool emit_firstkey,
              ThreadLocal &thd_ctx) const {
     thd_ctx.reset_masstree_scan_stack();
-    return indexes_[idx]->rscan_range_first(key, rloc,
+    return indexes_[idx]->rscan_range_first(key, p_record_ptr,
                    emit_firstkey,
                    thd_ctx.masstree_scan_stack_,
                    *thd_ctx.ti_);
   }
 
-  bool index_rscan_range_next(uint32_t idx, RecordLocation &rloc,
+  bool index_rscan_range_next(uint32_t idx, RecordPtr *&p_record_ptr,
                        ThreadLocal &thd_ctx) const {
-    return indexes_[idx]->rscan_range_next(rloc,
+    return indexes_[idx]->rscan_range_next(p_record_ptr,
                     thd_ctx.masstree_scan_stack_,
                     *thd_ctx.ti_);
   }
@@ -188,11 +205,23 @@ private:
     return block;
   }
 
+  //FIXME: use per-thread allocator
+  RecordPtrBlock *alloc_record_ptr_block() {
+    RecordPtrBlock *block =  new RecordPtrBlock();
+    block->block_id_ = next_record_ptr_block_id.fetch_add(1,
+                   std::memory_order_relaxed);
+    return block;
+  }
+
   /**
   @brief add a block to table store
   */
   void add_block(RecordBlock *block) {
     record_blocks_.Upsert(block->block_id_, block);
+  }
+
+  void add_record_ptr_block(RecordPtrBlock *block) {
+    record_ptr_blocks_.Upsert(block->block_id_, block);
   }
 
   /**
@@ -216,6 +245,13 @@ private:
     }
   }
 
+  void init_record_ptr_allocators() {
+    for (size_t i = 0; i < PARALLEL_WRITER_NUM; i++) {
+      record_ptr_allocators_[i] = alloc_record_ptr_block();
+      add_record_ptr_block(record_ptr_allocators_[i]);
+    }
+  }
+
 
 private:
   // static members
@@ -235,10 +271,14 @@ private:
   std::array<RecordBlock*, PARALLEL_WRITER_NUM> record_writers_;
 
 
-  //table scan
+  // table scan
   RecordBlock *table_scan_cached_block_;
 
   // index
   std::vector<MasstreeIndex *> indexes_;
+
+  std::atomic<uint32_t> next_record_ptr_block_id;
+  CuckooMap<uint32_t, RecordPtrBlock*> record_ptr_blocks_;
+  std::array<RecordPtrBlock*, PARALLEL_WRITER_NUM> record_ptr_allocators_;
 };
 }

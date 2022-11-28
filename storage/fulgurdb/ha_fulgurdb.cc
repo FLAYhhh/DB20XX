@@ -88,10 +88,12 @@
 #include "mysql/plugin.h"
 #include "sql/sql_class.h"
 #include "sql/sql_plugin.h"
+#include "thread_local.h"
 #include "typelib.h"
 
 #include "./engine.h"
 #include "./ha_fulgurdb_help.h"
+#include "transaction.h"
 
 static handler *fulgurdb_create_handler(handlerton *hton, TABLE_SHARE *table,
                                        bool partitioned, MEM_ROOT *mem_root);
@@ -105,18 +107,6 @@ static bool fulgurdb_is_supported_system_table(const char *db,
 
 Fulgurdb_share::Fulgurdb_share() { thr_lock_init(&lock); }
 
-static int fulgurdb_init_func(void *p) {
-  DBUG_TRACE;
-
-  fulgurdb_hton = (handlerton *)p;
-  fulgurdb_hton->state = SHOW_OPTION_YES;
-  fulgurdb_hton->create = fulgurdb_create_handler;
-  fulgurdb_hton->flags = HTON_CAN_RECREATE;
-  fulgurdb_hton->is_supported_system_table = fulgurdb_is_supported_system_table;
-
-  fulgurdb::Engine::init();
-  return 0;
-}
 
 /**
   @brief
@@ -271,6 +261,9 @@ int ha_fulgurdb::write_row(uchar *sl_record) {
   fulgurdb::RecordLocation rloc = se_table_->alloc_record(tl);
   rloc.load_data_from_mysql((char *)sl_record, se_table_->get_schema());
   se_table_->insert_record_to_index(rloc, *ti);
+
+  fulgurdb::TransactionContext *txn_ctx = tl->get_transaction_context();
+  txn_ctx->apply_insert(rloc);
 
   return 0;
 }
@@ -639,8 +632,32 @@ int ha_fulgurdb::delete_all_rows() {
   the section "locking functions for mysql" in lock.cc;
   copy_data_between_tables() in sql_table.cc.
 */
-int ha_fulgurdb::external_lock(THD *, int) {
+int ha_fulgurdb::external_lock(THD *thd, int lock_type) {
   DBUG_TRACE;
+  uint32_t thd_id = thd->thread_id();
+  enum_sql_command sql_command = (enum_sql_command)thd_sql_command(thd);
+
+  // First time use the table, instead of  close/unclock the table
+  if (lock_type != F_UNLCK) {
+    acquire_owner = (sql_command == SQLCOM_UPDATE ||
+                     sql_command == SQLCOM_DELETE ||
+                     sql_command == SQLCOM_UPDATE_MULTI ||
+                     sql_command == SQLCOM_DELETE_MULTI);
+
+    fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
+    fulgurdb::TransactionContext *trx_ctx =
+                   thd_ctx->get_transaction_context();
+    trx_ctx->begin_transaction();
+    // register in statement level
+    // FIXME: set 4th arg correctly (pointer to transaction id)
+    trans_register_ha(thd, false, ht, nullptr);
+
+    if ((thd->in_multi_stmt_transaction_mode())) {
+      // register in session level
+      trans_register_ha(thd, true, ht, nullptr);
+    }
+  }
+
   return 0;
 }
 
@@ -821,6 +838,44 @@ int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_in
   }
 
   return ret;
+}
+
+/**
+  'all' is true if it's a real commit, that makes persistent changes
+  'all' is false if it's not in fact a commit but an end of the
+  statement that is part of the transaction.
+  NOTE 'all' is also false in auto-commit mode where 'end of statement'
+  and 'real commit' mean the same event.
+*/
+int fulgurdb_commit(handlerton *hton, THD *thd, bool all) {
+  fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
+  fulgurdb::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+
+  if (txn_ctx->get_transaction_status() == FULGUR_TRANSACTION_ABORT) {
+    txn_ctx->abort();
+    return HA_ERR_GENERIC; //FIXME
+  }
+
+  bool real_commit = all || thd->in_active_multi_stmt_transaction();
+  if (real_commit) {
+    txn_ctx->commit();
+  }
+
+  return 0;
+}
+
+static int fulgurdb_init_func(void *p) {
+  DBUG_TRACE;
+
+  fulgurdb_hton = (handlerton *)p;
+  fulgurdb_hton->state = SHOW_OPTION_YES;
+  fulgurdb_hton->create = fulgurdb_create_handler;
+  fulgurdb_hton->commit = fulgurdb_commit;
+  fulgurdb_hton->flags = HTON_CAN_RECREATE;
+  fulgurdb_hton->is_supported_system_table = fulgurdb_is_supported_system_table;
+
+  fulgurdb::Engine::init();
+  return 0;
 }
 
 struct st_mysql_storage_engine fulgurdb_storage_engine = {
