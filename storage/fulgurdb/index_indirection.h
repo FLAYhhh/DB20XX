@@ -14,6 +14,9 @@ class Record;
 class RecordPtr {
 public:
   char *get_record_payload();
+  void init() {
+    ptr_ = nullptr;
+  }
 public:
   Record *ptr_;
 };

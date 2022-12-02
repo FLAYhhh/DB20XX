@@ -6,8 +6,8 @@ namespace fulgurdb {
 class Schema {
 friend class Table;
 public:
-  Schema() = default;
-  Schema(const Schema &other) = default;
+  //Schema() = default;
+  //Schema(const Schema &other) = default;
 
 
   /**

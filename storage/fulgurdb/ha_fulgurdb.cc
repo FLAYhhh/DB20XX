@@ -83,9 +83,12 @@
 */
 
 #include "storage/fulgurdb/ha_fulgurdb.h"
+#include <cstdint>
 
 #include "my_dbug.h"
 #include "mysql/plugin.h"
+#include "record_location.h"
+#include "return_status.h"
 #include "sql/sql_class.h"
 #include "sql/sql_plugin.h"
 #include "thread_local.h"
@@ -255,15 +258,9 @@ int ha_fulgurdb::close(void) {
 
 int ha_fulgurdb::write_row(uchar *sl_record) {
   DBUG_TRACE;
-  fulgurdb::ThreadLocal *tl = get_thread_ctx();
-  fulgurdb::threadinfo_type *ti = get_threadinfo();
-
-  fulgurdb::RecordLocation rloc = se_table_->alloc_record(tl);
-  rloc.load_data_from_mysql((char *)sl_record, se_table_->get_schema());
-  se_table_->insert_record_to_index(rloc, *ti);
-
-  fulgurdb::TransactionContext *txn_ctx = tl->get_transaction_context();
-  txn_ctx->apply_insert(rloc);
+  fulgurdb::ThreadContext *tl = get_thread_ctx();
+  fulgurdb::RecordLocation rloc;
+  se_table_->insert_record_from_mysql((char *)sl_record, tl, rloc);
 
   return 0;
 }
@@ -322,7 +319,7 @@ int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
   fulgurdb::Key fgdb_key(reinterpret_cast<char *>(
                          const_cast<uchar *>(key)), key_len, false);
   fulgurdb::RecordLocation rloc;
-  fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   fulgurdb::threadinfo_type *ti = thd_ctx->get_threadinfo();
   bool found = false;
 
@@ -332,18 +329,23 @@ int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
     found = se_table_->get_record_from_index(active_index, fgdb_key, rloc, *ti);
   } else if (find_flag == HA_READ_KEY_OR_NEXT) {
     found = se_table_->index_scan_range_first(active_index,
-                   fgdb_key, rloc, true, *thd_ctx);
+                   fgdb_key, rloc, true,
+                   masstree_scan_stack_, *thd_ctx);
   } else if (find_flag == HA_READ_AFTER_KEY) {
     found = se_table_->index_scan_range_first(active_index,
-                   fgdb_key, rloc, false, *thd_ctx);
+                   fgdb_key, rloc, false,
+                   masstree_scan_stack_, *thd_ctx);
   } else if (find_flag == HA_READ_KEY_OR_PREV) {
     found = se_table_->index_rscan_range_first(active_index,
-                   fgdb_key, rloc, true, *thd_ctx);
+                   fgdb_key, rloc, true,
+                   masstree_scan_stack_, *thd_ctx);
   } else if (find_flag == HA_READ_BEFORE_KEY) {
     found = se_table_->index_rscan_range_first(active_index,
-                   fgdb_key, rloc, false, *thd_ctx);
+                   fgdb_key, rloc, false,
+                   masstree_scan_stack_, *thd_ctx);
   } else {
     //TODO:panic
+    assert(false);
   }
 
   if (found) {
@@ -360,22 +362,25 @@ int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
 
 int ha_fulgurdb::index_next(uchar *record) {
   fulgurdb::RecordLocation rloc;
-  fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   bool found = false;
 
   switch (scan_direction_) {
     case HA_READ_KEY_OR_NEXT:
     case HA_READ_AFTER_KEY:
       found = se_table_->index_scan_range_next(
-                 active_index, rloc, *thd_ctx);
+                 active_index, rloc,
+                 masstree_scan_stack_, *thd_ctx);
       break;
     case HA_READ_KEY_OR_PREV:
     case HA_READ_BEFORE_KEY:
       found = se_table_->index_rscan_range_next(
-                 active_index, rloc, *thd_ctx);
+                 active_index, rloc,
+                 masstree_scan_stack_, *thd_ctx);
       break;
     default:
       //TODO:panic
+      assert(false);
       break;
   }
 
@@ -477,11 +482,23 @@ int ha_fulgurdb::rnd_end() {
 int ha_fulgurdb::rnd_next(uchar *sl_record) {
   DBUG_TRACE;
   int ret = fulgurdb::FULGUR_SUCCESS;
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
 
-  ret = se_table_->table_scan_get(seq_scan_cursor_);
+  ret = se_table_->table_scan_get(seq_scan_cursor_,
+                    read_own_statement_, thd_ctx);
   if (ret == fulgurdb::FULGUR_END_OF_TABLE)
     return HA_ERR_END_OF_FILE;
 
+  if (ret == fulgurdb::FULGUR_GET_INVISIBLE_VERSION) {
+    return rnd_next(sl_record);
+  }
+
+  if (ret == fulgurdb::FULGUR_RETRY ||
+      ret == fulgurdb::FULGUR_FAIL) {
+    return HA_ERR_GENERIC;
+  }
+
+  // At this point, we've got a visible record version
   seq_scan_cursor_.load_data_to_mysql((char *)sl_record,
                                se_table_->get_schema());
   table->set_found_row();
@@ -634,20 +651,21 @@ int ha_fulgurdb::delete_all_rows() {
 */
 int ha_fulgurdb::external_lock(THD *thd, int lock_type) {
   DBUG_TRACE;
-  uint32_t thd_id = thd->thread_id();
   enum_sql_command sql_command = (enum_sql_command)thd_sql_command(thd);
 
   // First time use the table, instead of  close/unclock the table
   if (lock_type != F_UNLCK) {
-    acquire_owner = (sql_command == SQLCOM_UPDATE ||
+    //FIXME set and reset read_own_statement_ carefully
+    read_own_statement_ = (sql_command == SQLCOM_UPDATE ||
                      sql_command == SQLCOM_DELETE ||
                      sql_command == SQLCOM_UPDATE_MULTI ||
                      sql_command == SQLCOM_DELETE_MULTI);
 
-    fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
-    fulgurdb::TransactionContext *trx_ctx =
+    fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
+    fulgurdb::TransactionContext *txn_ctx =
                    thd_ctx->get_transaction_context();
-    trx_ctx->begin_transaction();
+    uint64_t thread_id = thd_ctx->get_thread_id();
+    txn_ctx->begin_transaction(thread_id);
     // register in statement level
     // FIXME: set 4th arg correctly (pointer to transaction id)
     trans_register_ha(thd, false, ht, nullptr);
@@ -848,10 +866,11 @@ int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_in
   and 'real commit' mean the same event.
 */
 int fulgurdb_commit(handlerton *hton, THD *thd, bool all) {
-  fulgurdb::ThreadLocal *thd_ctx = get_thread_ctx();
+  (void) hton;
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   fulgurdb::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
 
-  if (txn_ctx->get_transaction_status() == FULGUR_TRANSACTION_ABORT) {
+  if (txn_ctx->get_transaction_status() == fulgurdb::FULGUR_TRANSACTION_ABORT) {
     txn_ctx->abort();
     return HA_ERR_GENERIC; //FIXME
   }

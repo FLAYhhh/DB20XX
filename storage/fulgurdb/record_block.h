@@ -27,7 +27,10 @@ public:
 
     rec_loc.block_id_ = block_id_;
     rec_loc.idx_in_block_ = offset;
-    rec_loc.record_ = records_data_ + offset * record_length_;
+    rec_loc.record_ = reinterpret_cast<Record*>(
+         records_data_ + offset * record_length_);
+
+    rec_loc.record_->init_header();
 
     return FULGUR_SUCCESS;
   }
@@ -36,30 +39,11 @@ public:
     if (rec_loc.idx_in_block_ >= valid_record_num_)
       return FULGUR_INVALID_RECORD_LOCATION;
 
-    rec_loc.record_ = records_data_ +
-              rec_loc.idx_in_block_ * record_length_;
+    rec_loc.record_ = reinterpret_cast<Record*>(records_data_ +
+              rec_loc.idx_in_block_ * record_length_);
 
     return FULGUR_SUCCESS;
   }
-
-/*
-  void set_record_length(uint32_t record_len) {
-    record_length_ = record_len;
-  }
-
-  uint32_t get_record_length() {
-    return record_length_;
-  }
-
-  void set_record_capacity(uint32_t record_num) {
-    record_capacity_ = record_num;
-  }
-
-  uint32_t get_record_num() {
-
-  }
-*/
-
 private:
   uint32_t block_id_ = 0;
   uint32_t record_length_ = 0; // include header + payload

@@ -78,11 +78,12 @@ class ha_fulgurdb : public handler {
      rnd_next()
   */
   fulgurdb::RecordLocation seq_scan_cursor_;
+  fulgurdb::scan_stack_type masstree_scan_stack_;
 
   /**
     for transaction
   */
-   bool acquire_owner;
+   bool read_own_statement_;
 
   /*
     used by index_read() and index_next()

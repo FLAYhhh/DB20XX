@@ -1,6 +1,8 @@
 #pragma once
 #include <atomic>
+#include "data_types.h"
 #include "index_indirection.h"
+#include "transaction.h"
 #include "utils.h"
 #include "./schema.h"
 #include "./record_location.h"
@@ -32,52 +34,27 @@ public:
 
 
   /**
-  @brief
-    allocate a record space.
-    user should fill record data to empty record slot.
-
-  @return
-    location to the record
-  */
-  RecordLocation alloc_record(ThreadLocal *thd_ctx) {
-    uint32_t writer_idx = thd_ctx->get_thread_id()
-                             % PARALLEL_WRITER_NUM;
-
-    RecordLocation rec_loc;
-    RecordBlock *block = nullptr;
+   *@brief
+   *  insert an invisiable record to table
+   *@args
+   *  arg3 rloc[output]: record location of the new record
+   */
+  int insert_record_from_mysql(char *mysql_record,
+                               ThreadContext *thd_ctx,
+                               RecordLocation &rloc) {
     int status = FULGUR_SUCCESS;
-    do {
-      block = record_writers_[writer_idx];
-      status = block->alloc_record(rec_loc);
-    } while (status != FULGUR_SUCCESS);
 
-    // 仅有一个线程获得了block的最后一条记录,
-    // 由该线程负责更新这个位置的record_writer,
-    // 这种方法确保了只有一个线程会负责替换writer,
-    // 避免了并发修改
-    if (block->is_last_record(rec_loc)) {
-      record_writers_[writer_idx] = alloc_block();
-    }
+    status = alloc_record(rloc, thd_ctx);
+    if (status != FULGUR_SUCCESS)
+      return status;
 
-    // insert the record to index
-    threadinfo *ti = thd_ctx->get_threadinfo();
-    RecordPtrBlock *record_ptr_block = nullptr;
-    RecordPtr *p_record_ptr = nullptr; //pointer to RecordPtr
-    status = FULGUR_SUCCESS;
-    do {
-      record_ptr_block = record_ptr_allocators_[writer_idx];
-      status = record_ptr_block->alloc_record_ptr(p_record_ptr);
-    } while (status != FULGUR_SUCCESS);
+    rloc.load_data_from_mysql(mysql_record, schema_);
 
-    if (record_ptr_block->is_last_record(p_record_ptr)) {
-      record_ptr_allocators_[writer_idx] = alloc_record_ptr_block();
-    }
+    // Transaction module: set record header & add new record to rw set
+    TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+    txn_ctx->apply_insert(rloc);
 
-    insert_record_to_index(p_record_ptr, *ti);
-
-    rec_loc.record_->set_indirection(p_record_ptr);
-
-    return rec_loc;
+    return status;
   }
 
   /**
@@ -86,7 +63,9 @@ public:
     User should advance scan_cursor mannually before call this function.
     This function will correct scan_cursor if idx_in_block_ exceed limit 
   */
-  int table_scan_get(RecordLocation &scan_cursor) {
+  int table_scan_get(RecordLocation &scan_cursor, bool read_own,
+                     ThreadContext *thd_ctx) {
+    //first time in the block
     if (scan_cursor.record_ == nullptr) {
       table_scan_cached_block_ = get_block(scan_cursor.block_id_);
     }
@@ -107,7 +86,19 @@ public:
     status = table_scan_cached_block_->get_record(scan_cursor);
     assert(status == FULGUR_SUCCESS);
 
-    return FULGUR_SUCCESS;
+    // Transaction Module:
+    // First, do visibility judge, we should jump invisible records
+    // Second, for visible records, there are two types of read operation:
+    //   1. read own (typically in update operation, have two stage: read + write)
+    //   2. read (typically in select operation)
+
+    TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+    auto visibility = txn_ctx->get_visibility(scan_cursor);
+    if (visibility == RecordVersionVisibility::VISIBLE) {
+      return txn_ctx->apply_read(scan_cursor, read_own);
+    } else {
+      return FULGUR_GET_INVISIBLE_VERSION;
+    }
   }
 
   /**
@@ -151,45 +142,131 @@ public:
     @retval false: key does not exist
   */
   bool get_record_from_index(uint32_t idx, const Key &key,
-              RecordPtr *&p_record_ptr, threadinfo &ti) {
-    return indexes_[idx]->get(key, p_record_ptr, ti);
+              RecordLocation &rec_loc, threadinfo &ti) {
+    RecordPtr *p_record_ptr = nullptr;
+    bool found = indexes_[idx]->get(key, p_record_ptr, ti);
+    if (found) {
+      rec_loc.record_ = p_record_ptr->ptr_;
+    }
+    return found;
   }
 
   bool index_scan_range_first(uint32_t idx, const Key &key,
-             RecordPtr *&p_record_ptr, bool emit_firstkey,
-             ThreadLocal &thd_ctx) const {
-    thd_ctx.reset_masstree_scan_stack();
-    return indexes_[idx]->scan_range_first(key, p_record_ptr,
+             RecordLocation &rec_loc, bool emit_firstkey,
+             scan_stack_type &scan_stack, ThreadContext &thd_ctx) const {
+    RecordPtr *p_record_ptr = nullptr;
+    scan_stack.reset();
+
+    bool found = indexes_[idx]->scan_range_first(key, p_record_ptr,
                    emit_firstkey,
-                   thd_ctx.masstree_scan_stack_,
+                   scan_stack,
                    *thd_ctx.ti_);
+    if (found) {
+      rec_loc.record_ = p_record_ptr->ptr_;
+    }
+    return found;
   }
 
-  bool index_scan_range_next(uint32_t idx, RecordPtr *&p_record_ptr,
-                       ThreadLocal &thd_ctx) const {
-    return indexes_[idx]->scan_range_next(p_record_ptr,
-                    thd_ctx.masstree_scan_stack_,
-                    *thd_ctx.ti_);
+  int index_scan_range_next(uint32_t idx, RecordLocation &rec_loc,
+                       scan_stack_type &scan_stack,
+                       ThreadContext &thd_ctx,
+                       bool read_own) const {
+    RecordPtr *p_record_ptr = nullptr;
+    bool found = indexes_[idx]->scan_range_next(p_record_ptr,
+                    scan_stack, *thd_ctx.ti_);
+    if (!found)
+      return false;
+
+    // Traverse the version chain to find a valid version
+    rec_loc.record_ = p_record_ptr->ptr_;
+
+    TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
+    int ret = txn_ctx->read_traverse_version_chain(
+              p_record_ptr, read_own);
+    if (ret == FULGUR_SUCCESS)
+      return true;
+    else if (ret == FULGUR_FAIL)
+      return false;
   }
 
   bool index_rscan_range_first(uint32_t idx, const Key &key,
-             RecordPtr *&p_record_ptr, bool emit_firstkey,
-             ThreadLocal &thd_ctx) const {
-    thd_ctx.reset_masstree_scan_stack();
-    return indexes_[idx]->rscan_range_first(key, p_record_ptr,
+             RecordLocation &rec_loc, bool emit_firstkey,
+             scan_stack_type &scan_stack, ThreadContext &thd_ctx) const {
+    RecordPtr *p_record_ptr = nullptr;
+    scan_stack.reset();
+    bool found = indexes_[idx]->rscan_range_first(key, p_record_ptr,
                    emit_firstkey,
-                   thd_ctx.masstree_scan_stack_,
+                   scan_stack,
                    *thd_ctx.ti_);
+    if (found) {
+      rec_loc.record_ = p_record_ptr->ptr_;
+    }
+    return found;
   }
 
-  bool index_rscan_range_next(uint32_t idx, RecordPtr *&p_record_ptr,
-                       ThreadLocal &thd_ctx) const {
-    return indexes_[idx]->rscan_range_next(p_record_ptr,
-                    thd_ctx.masstree_scan_stack_,
-                    *thd_ctx.ti_);
+  bool index_rscan_range_next(uint32_t idx, RecordLocation &rec_loc,
+                       scan_stack_type &scan_stack,
+                       ThreadContext &thd_ctx) const {
+    RecordPtr *p_record_ptr = nullptr;
+    bool found = indexes_[idx]->rscan_range_next(p_record_ptr,
+                    scan_stack, *thd_ctx.ti_);
+    if (found) {
+      rec_loc.record_ = p_record_ptr->ptr_;
+    }
+    return found;
   }
 
 private:
+  /**
+  @brief
+    1. Allocate and initialize an invisible record in table store;
+    2. Allocate an index indirection layer entry for this record,
+       and insert it to index;
+    3. Caller should fill record data to empty record slot.
+  @return
+    location to the record
+  */
+  int alloc_record(RecordLocation &rec_loc, ThreadContext *thd_ctx) {
+    uint32_t writer_idx = thd_ctx->get_thread_id()
+                             % PARALLEL_WRITER_NUM;
+    RecordBlock *block = nullptr;
+    int status = FULGUR_SUCCESS;
+    do {
+      block = record_writers_[writer_idx];
+      status = block->alloc_record(rec_loc);
+    } while (status != FULGUR_SUCCESS);
+
+    // 仅有一个线程获得了block的最后一条记录,
+    // 由该线程负责更新这个位置的record_writer,
+    // 这种方法确保了只有一个线程会负责替换writer,
+    // 避免了并发修改
+    if (block->is_last_record(rec_loc)) {
+      record_writers_[writer_idx] = alloc_block();
+    }
+
+    // insert the record to index
+    threadinfo *ti = thd_ctx->get_threadinfo();
+    RecordPtrBlock *record_ptr_block = nullptr;
+    RecordPtr *p_record_ptr = nullptr; //pointer to RecordPtr
+    status = FULGUR_SUCCESS;
+    do {
+      record_ptr_block = record_ptr_allocators_[writer_idx];
+      status = record_ptr_block->alloc_record_ptr(p_record_ptr);
+    } while (status != FULGUR_SUCCESS);
+
+    if (record_ptr_block->is_last_record(p_record_ptr)) {
+      record_ptr_allocators_[writer_idx] = alloc_record_ptr_block();
+    }
+
+    // @note: now, record data has not been filled,
+    //        but it does not matter.
+    insert_record_to_index(p_record_ptr, *ti);
+
+    rec_loc.record_->set_indirection(p_record_ptr);
+
+    return status;
+  }
+
   //FIXME: use per-thread allocator
   RecordBlock *alloc_block() {
     uint32_t complete_record_length = sizeof(RecordHeader)

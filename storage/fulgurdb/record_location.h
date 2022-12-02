@@ -10,6 +10,7 @@ class RecordLocation {
 friend class Table;
 friend class RecordBlock;
 public:
+  RecordLocation() = default;
   /**
   @brief
     used in sequential table scan, we use RecordLocation as
@@ -38,6 +39,7 @@ public:
 
 
 private:
+  //TODO: do not need block_id_ and idx_in_block_
   uint32_t block_id_ = 0;
   uint32_t idx_in_block_ = 0;
   Record *record_ = nullptr;

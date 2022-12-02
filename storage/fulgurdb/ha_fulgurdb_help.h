@@ -11,6 +11,7 @@
 #include "mysql/plugin.h"
 #include "sql/sql_class.h"
 #include "sql/sql_plugin.h"
+#include "thread_local.h"
 #include "typelib.h"
 
 
@@ -21,4 +22,4 @@
 */
 void generate_fulgur_schema(TABLE *form, fulgurdb::Schema &schema);
 fulgurdb::threadinfo_type *get_threadinfo();
-fulgurdb::ThreadLocal *get_thread_ctx();
+fulgurdb::ThreadContext *get_thread_ctx();
