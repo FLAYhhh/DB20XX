@@ -142,18 +142,27 @@ public:
     @retval false: key does not exist
   */
   bool get_record_from_index(uint32_t idx, const Key &key,
-              RecordLocation &rec_loc, threadinfo &ti) {
+              RecordLocation &rec_loc, ThreadContext &thd_ctx,
+              bool read_own) {
     RecordPtr *p_record_ptr = nullptr;
-    bool found = indexes_[idx]->get(key, p_record_ptr, ti);
-    if (found) {
-      rec_loc.record_ = p_record_ptr->ptr_;
-    }
-    return found;
+    bool found = indexes_[idx]->get(key, p_record_ptr, *thd_ctx.ti_);
+    if (!found)
+      return false;
+
+    // Traverse the version chain to find a valid version
+    TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
+    int ret = txn_ctx->read_traverse_version_chain(
+              *p_record_ptr, read_own, rec_loc);
+    if (ret == FULGUR_SUCCESS)
+      return true;
+    else
+      return false;
   }
 
   bool index_scan_range_first(uint32_t idx, const Key &key,
              RecordLocation &rec_loc, bool emit_firstkey,
-             scan_stack_type &scan_stack, ThreadContext &thd_ctx) const {
+             scan_stack_type &scan_stack, ThreadContext &thd_ctx,
+             bool read_own) const {
     RecordPtr *p_record_ptr = nullptr;
     scan_stack.reset();
 
@@ -161,10 +170,23 @@ public:
                    emit_firstkey,
                    scan_stack,
                    *thd_ctx.ti_);
-    if (found) {
-      rec_loc.record_ = p_record_ptr->ptr_;
+    if (!found)
+      return false;
+
+    // Traverse the version chain to find a valid version
+    TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
+    int ret = txn_ctx->read_traverse_version_chain(
+              *p_record_ptr, read_own, rec_loc);
+    if (ret == FULGUR_SUCCESS) {
+      return true;
+    } else if (emit_firstkey) {
+      return false;
+    } else if (!emit_firstkey) {
+      return index_scan_range_next(idx, rec_loc, scan_stack,
+                                thd_ctx, read_own);
     }
-    return found;
+
+    return false;
   }
 
   int index_scan_range_next(uint32_t idx, RecordLocation &rec_loc,
@@ -178,42 +200,79 @@ public:
       return false;
 
     // Traverse the version chain to find a valid version
-    rec_loc.record_ = p_record_ptr->ptr_;
-
     TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
     int ret = txn_ctx->read_traverse_version_chain(
-              p_record_ptr, read_own);
-    if (ret == FULGUR_SUCCESS)
+              *p_record_ptr, read_own, rec_loc);
+    if (ret == FULGUR_SUCCESS) {
       return true;
+    }
+
     else if (ret == FULGUR_FAIL)
+      return index_scan_range_next(idx, rec_loc, scan_stack,
+                                thd_ctx, read_own);
+    else {
+      // panic
+      assert(false);
       return false;
+    }
   }
 
   bool index_rscan_range_first(uint32_t idx, const Key &key,
              RecordLocation &rec_loc, bool emit_firstkey,
-             scan_stack_type &scan_stack, ThreadContext &thd_ctx) const {
+             scan_stack_type &scan_stack, ThreadContext &thd_ctx,
+             bool read_own) const {
     RecordPtr *p_record_ptr = nullptr;
     scan_stack.reset();
+
     bool found = indexes_[idx]->rscan_range_first(key, p_record_ptr,
                    emit_firstkey,
                    scan_stack,
                    *thd_ctx.ti_);
-    if (found) {
-      rec_loc.record_ = p_record_ptr->ptr_;
+    if (!found)
+      return false;
+
+    // Traverse the version chain to find a valid version
+    TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
+    int ret = txn_ctx->read_traverse_version_chain(
+              *p_record_ptr, read_own, rec_loc);
+    if (ret == FULGUR_SUCCESS) {
+      return true;
+    } else if (emit_firstkey) {
+      return false;
+    } else if (!emit_firstkey) {
+      return index_scan_range_next(idx, rec_loc, scan_stack,
+                                thd_ctx, read_own);
     }
-    return found;
+
+    return false;
   }
 
   bool index_rscan_range_next(uint32_t idx, RecordLocation &rec_loc,
                        scan_stack_type &scan_stack,
-                       ThreadContext &thd_ctx) const {
+                       ThreadContext &thd_ctx,
+                       bool read_own) const {
     RecordPtr *p_record_ptr = nullptr;
     bool found = indexes_[idx]->rscan_range_next(p_record_ptr,
                     scan_stack, *thd_ctx.ti_);
-    if (found) {
-      rec_loc.record_ = p_record_ptr->ptr_;
+    if (!found)
+      return false;
+
+    // Traverse the version chain to find a valid version
+    TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
+    int ret = txn_ctx->read_traverse_version_chain(
+              *p_record_ptr, read_own, rec_loc);
+    if (ret == FULGUR_SUCCESS) {
+      return true;
     }
-    return found;
+
+    else if (ret == FULGUR_FAIL)
+      return index_scan_range_next(idx, rec_loc, scan_stack,
+                                thd_ctx, read_own);
+    else {
+      // panic
+      assert(false);
+      return false;
+    }
   }
 
 private:

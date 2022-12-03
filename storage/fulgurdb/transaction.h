@@ -1,6 +1,7 @@
 #pragma once
 #include <openssl/pem.h>
 #include <sys/types.h>
+#include <cassert>
 #include <cstdint>
 #include <unordered_set>
 #include "data_types.h"
@@ -117,14 +118,22 @@ public:
     }
   }
 
-  // FIXME: rename RecordPtr to RecordVersionHead
-  typedef RecordPtr RecordVersionHead;
   int read_traverse_version_chain(RecordVersionHead &version_head,
-                                  bool read_own) {
-    if (read_own)
-      return read_own_traverse_vchain(version_head);
-    else
-      return read_unown_traverse_vchain(version_head);
+                                  bool read_own,
+                                  RecordLocation &rec_loc) {
+    int retry_time = 0;
+    int ret = FULGUR_RETRY;
+    while (ret == FULGUR_RETRY && retry_time < 5) {
+      if (read_own) {
+        ret = read_own_traverse_vchain(version_head, rec_loc);
+      } else {
+        ret = read_unown_traverse_vchain(version_head, rec_loc);
+      }
+    }
+
+    if (ret == FULGUR_RETRY)
+      ret = FULGUR_FAIL;
+    return ret;
   }
 
   ReturnStatus get_transaction_status() {
@@ -177,7 +186,8 @@ public:
 
 
 private:
-  int read_unown_traverse_vchain(RecordVersionHead &version_head) {
+  int read_unown_traverse_vchain(RecordVersionHead &version_head,
+                                 RecordLocation &rec_loc) {
     RecordHeader *version_iter = version_head.ptr_->get_record_header();
     while (version_iter != nullptr) {
       version_iter->latch_.lock();
@@ -197,6 +207,7 @@ private:
       if (version_iter->end_ts_ != MAX_TIMESTAMP
           && transaction_id_ <= version_iter->end_ts_) {
         version_iter->latch_.unlock();
+        rec_loc.record_ = reinterpret_cast<Record *>(version_iter);
         // no need to set last_read_ts_ for an old version
         return FULGUR_SUCCESS;
       } else {
@@ -206,7 +217,9 @@ private:
         if (version_iter->txn_id_ == INVALID_TRANSACTION_ID) {
           update_last_read_ts_if_need(version_iter);
           version_iter->latch_.unlock();
+          rec_loc.record_ = reinterpret_cast<Record *>(version_iter);
           return FULGUR_SUCCESS;
+        // A temporary latest version, but not stable
         } else if (version_iter->txn_id_ != INVALID_TRANSACTION_ID) {
           if (version_iter->txn_id_ < transaction_id_) {
             // A younger transaction is holding the version
@@ -216,80 +229,77 @@ private:
             // An older transaction is holding the version
             update_last_read_ts_if_need(version_iter);
             version_iter->latch_.unlock();
+            rec_loc.record_ = reinterpret_cast<Record *>(version_iter);
+            return FULGUR_SUCCESS;
+          } else if (transaction_id_ == version_iter->txn_id_) {
+            //FIXME: read from read_own_set ?
+            version_iter->latch_.unlock();
+            rec_loc.record_ = reinterpret_cast<Record *>(version_iter);
             return FULGUR_SUCCESS;
           }
         }
       }
 
-#if 0
-      if (version_iter->txn_id_ == INVALID_TRANSACTION_ID) {
-        // visible condition: transaction id belongs to [begin_ts, end_ts)
-        if (version_iter->begin_ts_ <= transaction_id_ &&
-            transaction_id_ < version_iter->end_ts_) {
-          update_last_read_ts_if_need(version_iter);
-          version_iter->latch_.unlock();
-          return FULGUR_SUCCESS;
-        } else if (transaction_id_ < version_iter->begin_ts_) {
-          // look for an older version;
-          version_iter->latch_.unlock();
-          version_iter = version_iter->older_->get_record_header();
-        } else {
-          // verison_iter->end_ts_ <= transaction_id_
-          // only possible condition is end_ts_ = 0,
-          // meaning this version is deleted
-          assert(version_iter->end_ts_ == 0); // for debug
-          version_iter->latch_.unlock();
-          return FULGUR_FAIL;
-        }
-      } else {
-        // current version is owned by someone
-        // version_iter->txn_id_(owner's txn id) != INVALID_TRANSACTION_ID
-        // ≤TODO: make sure it≥implies: (see @get_version_ownership())
-        //   (if version_iter is a committed version,
-        //    we can not see uncommited version from index)
-        //   1. version_iter->begin_ts_ < verison_iter->txn_id_
-        //   2. version_iter->end_ts_ == MAX_TIMESTAMP
-        if (version_iter->txn_id_ == transaction_id_) {
-          // naive case, current transaction own the version,
-          // we can always get the version
-          // TODO: In what condition will this case show up ?
-          // TODO: see update() and insert()
-          // TODO: if own the record will enventually set the
-          //       last_read_ts_ of the version, we did not need
-          //       to set it here.
-          version_iter->last_read_ts_ = transaction_id_;
-          version_iter->latch_.unlock();
-          return FULGUR_SUCCESS;
-        } else if (version_iter->txn_id_ < transaction_id_){
-          // From the implication, begin_ts_ also less than transaction_id_,
-          //   so it should be a visible version to current version.
-          // But, a younger transaction has owned the version,
-          //   we can not read it anymore
-          version_iter->latch_.unlock();
-          return FULGUR_RETRY;
-        } else if (transaction_id_ < version_iter->txn_id_) {
-          if (version_iter->begin_ts_ <= transaction_id_) {
-            // We can read the version safely, because even current
-            // version become a old version, it is still visible to
-            // current transaction
-            update_last_read_ts_if_need(version_iter);
-            version_iter->latch_.unlock();
-            return FULGUR_SUCCESS;
-          } else if (transaction_id_ < version_iter->begin_ts_) {
-            version_iter->latch_.unlock();
-            version_iter = version_iter->older_->get_record_header();
-          }
-        }
-      }
-      version_iter->latch_.unlock();
+      // panic: should not reach here
+      assert(false);
     }
-#endif
+
+    // No valid version
+    return FULGUR_FAIL;
   }
 
-  int read_own_traverse_vchain(RecordVersionHead &version_head) {
+  int read_own_traverse_vchain(RecordVersionHead &version_head,
+                               RecordLocation &rec_loc) {
+    RecordHeader *version_iter = version_head.ptr_->get_record_header();
+    version_iter->latch_.lock();
+    // begin_ts_ is immutable in version chain,
+    if (transaction_id_ < version_iter->begin_ts_) {
+      version_iter->latch_.unlock();
+      return FULGUR_FAIL;
+    }
 
+    // a deleted version
+    if (version_iter->end_ts_ == 0) {
+      version_iter->latch_.unlock();
+      return FULGUR_FAIL;
+    }
+    // not the latest version anymore
+    else if (version_iter->end_ts_ < transaction_id_) {
+      version_iter->latch_.unlock();
+      return FULGUR_RETRY;
+    // still the latest version, and free
+    } else if (version_iter->txn_id_ == INVALID_TRANSACTION_ID) {
+      if (transaction_id_ < version_iter->last_read_ts_) {
+        version_iter->latch_.unlock();
+        return FULGUR_FAIL;
+      } else {
+        update_last_read_ts_if_need(version_iter);
+        version_iter->latch_.unlock();
+        rec_loc.record_ = reinterpret_cast<Record *>(version_iter);
+        return FULGUR_SUCCESS;
+      }
+    // latest version, but not free
+    } else if (version_iter->txn_id_ != INVALID_TRANSACTION_ID) {
+      if (version_iter->txn_id_ < transaction_id_) {
+        version_iter->latch_.unlock();
+        return FULGUR_RETRY;
+      } else if (transaction_id_ < version_iter->txn_id_) {
+        version_iter->latch_.unlock();
+        return FULGUR_FAIL;
+      } else if (transaction_id_ == version_iter->txn_id_) {
+        version_iter->latch_.unlock();
+        rec_loc.record_ = reinterpret_cast<Record *>(version_iter);
+        return FULGUR_SUCCESS;
+      }
+    }
+    // panic: should not reach here
+    assert(false);
+    return FULGUR_FAIL;
   }
 
+  /**
+   *@brief caller must hold the latch of record header
+   */
   void update_last_read_ts_if_need(RecordHeader *record_header) {
     if (record_header->last_read_ts_ < transaction_id_)
       record_header->last_read_ts_ = transaction_id_;

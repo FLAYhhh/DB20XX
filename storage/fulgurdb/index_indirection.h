@@ -11,6 +11,7 @@ class Record;
  *  index value type is [RecordPtrWrapper *],
  *  so that, we don't need to modify index when update
  */
+
 class RecordPtr {
 public:
   char *get_record_payload();
@@ -20,6 +21,9 @@ public:
 public:
   Record *ptr_;
 };
+
+//FIXME: rename all
+typedef RecordPtr RecordVersionHead;
 
 
 /**

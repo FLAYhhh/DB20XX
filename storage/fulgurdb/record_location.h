@@ -1,4 +1,5 @@
 #pragma once
+#include "transaction.h"
 #include "utils.h"
 #include "schema.h"
 
@@ -8,6 +9,7 @@ class RecordHeader;
 class Record;
 class RecordLocation {
 friend class Table;
+friend class TransactionContext;
 friend class RecordBlock;
 public:
   RecordLocation() = default;
