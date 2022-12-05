@@ -99,17 +99,16 @@
 #include "transaction.h"
 
 static handler *fulgurdb_create_handler(handlerton *hton, TABLE_SHARE *table,
-                                       bool partitioned, MEM_ROOT *mem_root);
+                                        bool partitioned, MEM_ROOT *mem_root);
 
 handlerton *fulgurdb_hton;
 
 /* Interface to mysqld, to check system tables supported by SE */
 static bool fulgurdb_is_supported_system_table(const char *db,
-                                              const char *table_name,
-                                              bool is_sql_layer_system_table);
+                                               const char *table_name,
+                                               bool is_sql_layer_system_table);
 
 Fulgurdb_share::Fulgurdb_share() { thr_lock_init(&lock); }
-
 
 /**
   @brief
@@ -137,7 +136,7 @@ err:
 }
 
 static handler *fulgurdb_create_handler(handlerton *hton, TABLE_SHARE *table,
-                                       bool, MEM_ROOT *mem_root) {
+                                        bool, MEM_ROOT *mem_root) {
   return new (mem_root) ha_fulgurdb(hton, table);
 }
 
@@ -168,8 +167,8 @@ static st_handler_tablename ha_fulgurdb_system_tables[] = {
   @retval false  Given db.table_name is not a supported system table.
 */
 static bool fulgurdb_is_supported_system_table(const char *db,
-                                              const char *table_name,
-                                              bool is_sql_layer_system_table) {
+                                               const char *table_name,
+                                               bool is_sql_layer_system_table) {
   st_handler_tablename *systab;
 
   // Does this SE support "ALL" SQL layer system tables ?
@@ -202,21 +201,19 @@ static bool fulgurdb_is_supported_system_table(const char *db,
   handler::ha_open() in handler.cc
 */
 
-int ha_fulgurdb::open(const char *name,
-     int, uint, const dd::Table *) {
+int ha_fulgurdb::open(const char *name, int, uint, const dd::Table *) {
   DBUG_TRACE;
-  //fulgurdb::threadinfo_type *ti = get_threadinfo();
+  // fulgurdb::threadinfo_type *ti = get_threadinfo();
   LEX_CSTRING sl_db_name = table->s->db;
   std::string db_name(sl_db_name.str, sl_db_name.length);
   std::string table_name(name);
 
   fulgurdb::Database *database = fulgurdb::Engine::get_database(db_name);
   if (database == nullptr)
-    return HA_ERR_NO_SUCH_TABLE; // 是否存在类似于no such db的error code？
+    return HA_ERR_NO_SUCH_TABLE;  // 是否存在类似于no such db的error code？
 
-  se_table_ = database->get_table(table_name);
-  if (se_table_ == nullptr)
-    return HA_ERR_NO_SUCH_TABLE;
+  fulgur_table_ = database->get_table(table_name);
+  if (fulgur_table_ == nullptr) return HA_ERR_NO_SUCH_TABLE;
 
   return 0;
 }
@@ -258,18 +255,18 @@ int ha_fulgurdb::close(void) {
 
 int ha_fulgurdb::write_row(uchar *sl_record) {
   DBUG_TRACE;
-  fulgurdb::ThreadContext *tl = get_thread_ctx();
-  fulgurdb::RecordLocation rloc;
-  se_table_->insert_record_from_mysql((char *)sl_record, tl, rloc);
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
+  fulgur_table_->insert_record_from_mysql((char *)sl_record, thd_ctx);
 
   return 0;
 }
 
 /**
   @brief
-  update_row() updates a row. old_data will have the previous row record in it, while new_data will have the newest data in it.
-  Keep in mind that the server can do updates based on ordering if an ORDER BY
-  clause was used. Consecutive ordering is not guaranteed.
+  update_row() updates a row. old_data will have the previous row record in it,
+  while new_data will have the newest data in it. Keep in mind that the server
+  can do updates based on ordering if an ORDER BY clause was used. Consecutive
+  ordering is not guaranteed.
 
   @details
   Currently new_data will not have an updated auto_increament record. You can
@@ -284,9 +281,11 @@ int ha_fulgurdb::write_row(uchar *sl_record) {
 */
 int ha_fulgurdb::update_row(const uchar *old_row, uchar *new_row) {
   (void)old_row;
-  (void)new_row;
   DBUG_TRACE;
-  return HA_ERR_WRONG_COMMAND;
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
+  fulgur_table_->update_record_from_mysql(current_record_, (char *)new_row,
+                                          thd_ctx);
+  return 0;
 }
 
 /**
@@ -315,9 +314,9 @@ int ha_fulgurdb::delete_row(const uchar *) {
 }
 
 int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
-                         enum ha_rkey_function find_flag) {
-  fulgurdb::Key fgdb_key(reinterpret_cast<char *>(
-                         const_cast<uchar *>(key)), key_len, false);
+                            enum ha_rkey_function find_flag) {
+  fulgurdb::Key fgdb_key(reinterpret_cast<char *>(const_cast<uchar *>(key)),
+                         key_len, false);
   fulgurdb::RecordLocation rloc;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   fulgurdb::threadinfo_type *ti = thd_ctx->get_threadinfo();
@@ -326,30 +325,27 @@ int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
   // flag的定义见include/my_base.h
   scan_direction_ = find_flag;
   if (find_flag == HA_READ_KEY_EXACT) {
-    found = se_table_->get_record_from_index(active_index, fgdb_key, rloc, *ti);
+    found =
+        fulgur_table_->get_record_from_index(active_index, fgdb_key, rloc, *ti);
   } else if (find_flag == HA_READ_KEY_OR_NEXT) {
-    found = se_table_->index_scan_range_first(active_index,
-                   fgdb_key, rloc, true,
-                   masstree_scan_stack_, *thd_ctx);
+    found = fulgur_table_->index_scan_range_first(
+        active_index, fgdb_key, rloc, true, masstree_scan_stack_, *thd_ctx);
   } else if (find_flag == HA_READ_AFTER_KEY) {
-    found = se_table_->index_scan_range_first(active_index,
-                   fgdb_key, rloc, false,
-                   masstree_scan_stack_, *thd_ctx);
+    found = fulgur_table_->index_scan_range_first(
+        active_index, fgdb_key, rloc, false, masstree_scan_stack_, *thd_ctx);
   } else if (find_flag == HA_READ_KEY_OR_PREV) {
-    found = se_table_->index_rscan_range_first(active_index,
-                   fgdb_key, rloc, true,
-                   masstree_scan_stack_, *thd_ctx);
+    found = fulgur_table_->index_rscan_range_first(
+        active_index, fgdb_key, rloc, true, masstree_scan_stack_, *thd_ctx);
   } else if (find_flag == HA_READ_BEFORE_KEY) {
-    found = se_table_->index_rscan_range_first(active_index,
-                   fgdb_key, rloc, false,
-                   masstree_scan_stack_, *thd_ctx);
+    found = fulgur_table_->index_rscan_range_first(
+        active_index, fgdb_key, rloc, false, masstree_scan_stack_, *thd_ctx);
   } else {
-    //TODO:panic
+    // TODO:panic
     assert(false);
   }
 
   if (found) {
-    rloc.load_data_to_mysql((char *)record, se_table_->get_schema());
+    rloc.load_data_to_mysql((char *)record, fulgur_table_->get_schema());
     return 0;
   } else
     return HA_ERR_KEY_NOT_FOUND;
@@ -368,24 +364,23 @@ int ha_fulgurdb::index_next(uchar *record) {
   switch (scan_direction_) {
     case HA_READ_KEY_OR_NEXT:
     case HA_READ_AFTER_KEY:
-      found = se_table_->index_scan_range_next(
-                 active_index, rloc,
-                 masstree_scan_stack_, *thd_ctx);
+      found = fulgur_table_->index_scan_range_next(
+          active_index, rloc, masstree_scan_stack_, *thd_ctx);
       break;
     case HA_READ_KEY_OR_PREV:
     case HA_READ_BEFORE_KEY:
-      found = se_table_->index_rscan_range_next(
-                 active_index, rloc,
-                 masstree_scan_stack_, *thd_ctx);
+      found = fulgur_table_->index_rscan_range_next(
+          active_index, rloc, masstree_scan_stack_, *thd_ctx);
       break;
     default:
-      //TODO:panic
+      // TODO:panic
       assert(false);
       break;
   }
 
   if (found) {
-    rloc.load_data_to_mysql((char *)record, se_table_->get_schema());
+    rloc.load_data_to_mysql((char *)record, fulgur_table_->get_schema());
+    current_record_.set_record(rloc.get_record());
     return 0;
   } else
     return HA_ERR_KEY_NOT_FOUND;
@@ -484,25 +479,26 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
   int ret = fulgurdb::FULGUR_SUCCESS;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
 
-  ret = se_table_->table_scan_get(seq_scan_cursor_,
-                    read_own_statement_, thd_ctx);
-  if (ret == fulgurdb::FULGUR_END_OF_TABLE)
-    return HA_ERR_END_OF_FILE;
+  ret = fulgur_table_->table_scan_get(seq_scan_cursor_, read_own_statement_,
+                                      thd_ctx);
+  if (ret == fulgurdb::FULGUR_END_OF_TABLE) return HA_ERR_END_OF_FILE;
 
   if (ret == fulgurdb::FULGUR_GET_INVISIBLE_VERSION) {
+    seq_scan_cursor_.inc_cursor();
     return rnd_next(sl_record);
   }
 
-  if (ret == fulgurdb::FULGUR_RETRY ||
-      ret == fulgurdb::FULGUR_FAIL) {
+  if (ret == fulgurdb::FULGUR_RETRY || ret == fulgurdb::FULGUR_FAIL) {
     return HA_ERR_GENERIC;
   }
 
   // At this point, we've got a visible record version
   seq_scan_cursor_.load_data_to_mysql((char *)sl_record,
-                               se_table_->get_schema());
+                                      fulgur_table_->get_schema());
   table->set_found_row();
   seq_scan_cursor_.inc_cursor();
+  current_record_ = seq_scan_cursor_.get_record();
+
   return 0;
 }
 
@@ -655,15 +651,14 @@ int ha_fulgurdb::external_lock(THD *thd, int lock_type) {
 
   // First time use the table, instead of  close/unclock the table
   if (lock_type != F_UNLCK) {
-    //FIXME set and reset read_own_statement_ carefully
-    read_own_statement_ = (sql_command == SQLCOM_UPDATE ||
-                     sql_command == SQLCOM_DELETE ||
-                     sql_command == SQLCOM_UPDATE_MULTI ||
-                     sql_command == SQLCOM_DELETE_MULTI);
+    // FIXME set and reset read_own_statement_ carefully
+    read_own_statement_ =
+        (sql_command == SQLCOM_UPDATE || sql_command == SQLCOM_DELETE ||
+         sql_command == SQLCOM_UPDATE_MULTI ||
+         sql_command == SQLCOM_DELETE_MULTI);
 
     fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
-    fulgurdb::TransactionContext *txn_ctx =
-                   thd_ctx->get_transaction_context();
+    fulgurdb::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
     uint64_t thread_id = thd_ctx->get_thread_id();
     txn_ctx->begin_transaction(thread_id);
     // register in statement level
@@ -717,9 +712,8 @@ int ha_fulgurdb::external_lock(THD *thd, int lock_type) {
   get_lock_data() in lock.cc
 */
 THR_LOCK_DATA **ha_fulgurdb::store_lock(THD *, THR_LOCK_DATA **to,
-                                       enum thr_lock_type lock_type) {
-
-  (void) lock_type;
+                                        enum thr_lock_type lock_type) {
+  (void)lock_type;
   return to;
 }
 
@@ -763,7 +757,7 @@ int ha_fulgurdb::delete_table(const char *, const dd::Table *) {
   mysql_rename_table() in sql_table.cc
 */
 int ha_fulgurdb::rename_table(const char *, const char *, const dd::Table *,
-                             dd::Table *) {
+                              dd::Table *) {
   DBUG_TRACE;
   return HA_ERR_WRONG_COMMAND;
 }
@@ -798,24 +792,25 @@ static MYSQL_THDVAR_UINT(create_count_thdvar, 0, nullptr, nullptr, nullptr, 0,
   @param[in] form :table structure
   @param[in] create_info :more information on the table
   @param[in,out] table_def :dd::Table describing table to be
-    created. Can be adjusted by SE, the changes will be saved into data-dictionary
-    at statement commit time.
+    created. Can be adjusted by SE, the changes will be saved into
+  data-dictionary at statement commit time.
   @return error number
     @retval 0 on success
   @see
   ha_create_table() in handle.cc
 */
 
-int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_info,
-                       dd::Table *table_def) {
+int ha_fulgurdb::create(const char *name, TABLE *form,
+                        HA_CREATE_INFO *create_info, dd::Table *table_def) {
   DBUG_TRACE;
-  (void) create_info;
-  (void) table_def;
+  (void)create_info;
+  (void)table_def;
   int ret = 0;
-  //THD *thd = ha_thd();
-  LEX_CSTRING sl_dbname = form->s->db; // sl means server layer
-  //LEX_CSTRING sl_table_name = form->s->table_name;
-  std::string fgdb_dbname(sl_dbname.str, sl_dbname.length); // fulg is the abbreviation of fulgurdb
+  // THD *thd = ha_thd();
+  LEX_CSTRING sl_dbname = form->s->db;  // sl means server layer
+  // LEX_CSTRING sl_table_name = form->s->table_name;
+  std::string fgdb_dbname(
+      sl_dbname.str, sl_dbname.length);  // fulg is the abbreviation of fulgurdb
   std::string fgdb_table_name(name);
   fulgurdb::Database *db = nullptr;
 
@@ -844,10 +839,10 @@ int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_in
     keyinfo.schema = schema;
 
     KEY &mysql_key_info = table->key_info[i];
-    KEY_PART_INFO *keypart_end = mysql_key_info.key_part
-                 + mysql_key_info.user_defined_key_parts;
+    KEY_PART_INFO *keypart_end =
+        mysql_key_info.key_part + mysql_key_info.user_defined_key_parts;
     for (KEY_PART_INFO *keypart = mysql_key_info.key_part;
-          keypart != keypart_end; keypart++) {
+         keypart != keypart_end; keypart++) {
       keyinfo.add_key_part(keypart->fieldnr);
       keyinfo.key_len += keypart->length;
     }
@@ -866,13 +861,13 @@ int ha_fulgurdb::create(const char *name, TABLE *form, HA_CREATE_INFO *create_in
   and 'real commit' mean the same event.
 */
 int fulgurdb_commit(handlerton *hton, THD *thd, bool all) {
-  (void) hton;
+  (void)hton;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   fulgurdb::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
 
   if (txn_ctx->get_transaction_status() == fulgurdb::FULGUR_TRANSACTION_ABORT) {
     txn_ctx->abort();
-    return HA_ERR_GENERIC; //FIXME
+    return HA_ERR_GENERIC;  // FIXME
   }
 
   bool real_commit = all || thd->in_active_multi_stmt_transaction();
@@ -994,7 +989,8 @@ struct fulgurdb_vars_t {
   ulong var6;
 };
 
-fulgurdb_vars_t fulgurdb_vars = {100, 20.01, "three hundred", true, false, 8250};
+fulgurdb_vars_t fulgurdb_vars = {100,  20.01, "three hundred",
+                                 true, false, 8250};
 
 static SHOW_VAR show_status_fulgurdb[] = {
     {"var1", (char *)&fulgurdb_vars.var1, SHOW_LONG, SHOW_SCOPE_GLOBAL},
@@ -1028,11 +1024,11 @@ mysql_declare_plugin(fulgurdb){
     "Fulgurdb storage engine",
     PLUGIN_LICENSE_GPL,
     fulgurdb_init_func, /* Plugin Init */
-    nullptr,           /* Plugin check uninstall */
-    nullptr,           /* Plugin Deinit */
+    nullptr,            /* Plugin check uninstall */
+    nullptr,            /* Plugin Deinit */
     0x0001 /* 0.1 */,
-    func_status,              /* status variables */
+    func_status,               /* status variables */
     fulgurdb_system_variables, /* system variables */
-    nullptr,                  /* config options */
-    0,                        /* flags */
+    nullptr,                   /* config options */
+    0,                         /* flags */
 } mysql_declare_plugin_end;

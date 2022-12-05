@@ -1,23 +1,21 @@
 #pragma once
-#include "./utils.h"
-#include "./masstree-beta/kvthread.hh"
-#include "./masstree-beta/masstree.hh"
-#include "./masstree-beta/masstree_tcursor.hh"
-#include "./masstree-beta/masstree_scan.hh"
-#include "./record_location.h"
-#include "index_indirection.h"
+#include "masstree-beta/kvthread.hh"
+#include "masstree-beta/masstree.hh"
+#include "masstree-beta/masstree_scan.hh"
+#include "masstree-beta/masstree_tcursor.hh"
+#include "record.h"
+#include "utils.h"
+#include "version_chain.h"
 
 namespace fulgurdb {
 
-// FIXME: 当前设置的限制没有什么依据
-constexpr uint32_t FULGUR_MAX_KEYS = 255;
+// FIXME: 当前设置的限制没有什么依据 constexpr uint32_t FULGUR_MAX_KEYS = 255;
 constexpr uint32_t FULGUR_MAX_KEY_PARTS = 255;
 constexpr uint32_t FULGUR_MAX_KEY_LENGTH = 255;
 using namespace Masstree;
 
 struct Key {
-  Key(char *s, uint32_t l, bool own = true):
-    data(s), len(l), own_mem(own) {}
+  Key(char *s, uint32_t l, bool own = true) : data(s), len(l), own_mem(own) {}
   ~Key() {
     if (own_mem) free(data);
   }
@@ -32,9 +30,7 @@ struct KeyInfo {
     mysql keypart counted from 1,
     fulgurdb keypart counted from 0;
   */
-  void add_key_part(uint32_t key_part) {
-    key_parts.push_back(key_part - 1);
-  }
+  void add_key_part(uint32_t key_part) { key_parts.push_back(key_part - 1); }
 
   Schema schema;
   std::vector<int> key_parts;
@@ -42,15 +38,15 @@ struct KeyInfo {
 };
 
 class Index {
-public:
+ public:
   Index(void) {}
-  Index(const KeyInfo &keyinfo):keyinfo_(keyinfo) {}
+  Index(const KeyInfo &keyinfo) : keyinfo_(keyinfo) {}
   ~Index() {}
 
-  virtual bool get(const Key &key, RecordPtr *&p_record_ptr, threadinfo &ti) const = 0;
+  virtual bool get(const Key &key, VersionChainHead *&vchain_head,
+                   threadinfo &ti) const = 0;
 
-  virtual bool put(const Key &key, RecordPtr *p_record_ptr, threadinfo &ti) = 0;
-
+  virtual bool put(const Key &key, VersionChainHead *vchain_head, threadinfo &ti) = 0;
 
   /**
   @brief
@@ -74,14 +70,12 @@ public:
     return std::unique_ptr<Key>(new Key(key_data, keyinfo_.key_len));
   }
 
-private:
+ private:
   KeyInfo keyinfo_;
 };
 
-
-
 struct fulgurdb_masstree_params : public nodeparams<15, 15> {
-  typedef RecordPtr* value_type;
+  typedef VersionChainHead *value_type;
   typedef value_print<value_type> value_print_type;
   typedef threadinfo threadinfo_type;
 };
@@ -95,21 +89,18 @@ Masstree索引使用scan_stack_type记录scan的状态.
 typedef fulgurdb_masstree_params nodeparam_type;
 typedef scanstackelt<nodeparam_type> scan_stack_type;
 
-class MasstreeIndex: public Index {
+class MasstreeIndex : public Index {
   typedef basic_table<fulgurdb_masstree_params> fulgur_masstree_type;
-  typedef RecordPtr* leafvalue_type;
-public:
+  typedef typename fulgurdb_masstree_params::value_type leafvalue_type;
+
+ public:
   MasstreeIndex(void) {}
-  MasstreeIndex(const KeyInfo &keyinfo):Index(keyinfo) {}
+  MasstreeIndex(const KeyInfo &keyinfo) : Index(keyinfo) {}
   ~MasstreeIndex() {}
 
-  void initialize(threadinfo& ti) {
-    masstree_.initialize(ti);
-  }
+  void initialize(threadinfo &ti) { masstree_.initialize(ti); }
 
-  void destroy(threadinfo &ti) {
-    masstree_.destroy(ti);
-  }
+  void destroy(threadinfo &ti) { masstree_.destroy(ti); }
 
   /**
   @brief
@@ -120,14 +111,15 @@ public:
     @retval1 true: first put
     @retval2 false: not first put, update old value
   */
-  bool put(const Key &key, RecordPtr *p_record_ptr, threadinfo &ti) override {
-    typename fulgur_masstree_type::cursor_type lp(masstree_, Str(key.data, key.len));
+  bool put(const Key &key, VersionChainHead *vchain_head, threadinfo &ti) override {
+    typename fulgur_masstree_type::cursor_type lp(masstree_,
+                                                  Str(key.data, key.len));
     bool found = lp.find_insert(ti);
     if (!found) {
       ti.observe_phantoms(lp.node());
     }
 
-    apply_put(lp.value(), p_record_ptr, ti);
+    apply_put(lp.value(), vchain_head, ti);
     lp.finish(1, ti);
     return found;
   }
@@ -140,82 +132,85 @@ public:
       @retval2 false: key doesnot exist
     FIXME: same problem with apply_put
   */
-  bool get(const Key &key, RecordPtr *&p_record_ptr, threadinfo &ti) const override {
-    typename fulgur_masstree_type::unlocked_cursor_type lp(masstree_, Str(key.data, key.len));
+  bool get(const Key &key, VersionChainHead *&vchain_head,
+           threadinfo &ti) const override {
+    typename fulgur_masstree_type::unlocked_cursor_type lp(
+        masstree_, Str(key.data, key.len));
     bool found = lp.find_unlocked(ti);
-    if (found)
-      p_record_ptr = lp.value();
+    if (found) vchain_head = lp.value();
 
     return found;
   }
 
-
-  bool scan_range_first(const Key &key, RecordPtr *&p_record_ptr,
-                  bool emit_firstkey, scan_stack_type &stack,
-                  threadinfo &ti) const{
-    masstree_.scan_range_first(Str(key.data, key.len),
-                   emit_firstkey, stack, ti);
+  bool scan_range_first(const Key &key, VersionChainHead *&vchain_head,
+                        bool emit_firstkey, scan_stack_type &stack,
+                        threadinfo &ti) const {
+    masstree_.scan_range_first(Str(key.data, key.len), emit_firstkey, stack,
+                               ti);
     if (stack.no_value()) {
       return false;
     } else {
-      p_record_ptr = stack.get_value();
+      vchain_head = stack.get_value();
       return true;
     }
   }
 
-  bool scan_range_next(RecordPtr *&p_record_ptr, scan_stack_type &stack,
+  bool scan_range_next(VersionChainHead *&vchain_head, scan_stack_type &stack,
                        threadinfo &ti) const {
     masstree_.scan_range_next(stack, ti);
     if (stack.no_value()) {
       return false;
     } else {
-      p_record_ptr = stack.get_value();
+      vchain_head = stack.get_value();
       return true;
     }
   }
 
-  bool rscan_range_first(const Key &key, RecordPtr *&p_record_ptr,
-                  bool emit_firstkey, scan_stack_type &stack,
-                  threadinfo &ti) const {
-    masstree_.rscan_range_first(Str(key.data, key.len),
-                   emit_firstkey, stack, ti);
+  bool rscan_range_first(const Key &key, VersionChainHead *&vchain_head,
+                         bool emit_firstkey, scan_stack_type &stack,
+                         threadinfo &ti) const {
+    masstree_.rscan_range_first(Str(key.data, key.len), emit_firstkey, stack,
+                                ti);
     if (stack.no_value()) {
       return false;
     } else {
-      p_record_ptr = stack.get_value();
+      vchain_head = stack.get_value();
       return true;
     }
   }
 
-  bool rscan_range_next(RecordPtr *&p_record_ptr, scan_stack_type &stack,
-                       threadinfo &ti) const {
+  bool rscan_range_next(VersionChainHead *&vchain_head, scan_stack_type &stack,
+                        threadinfo &ti) const {
     masstree_.rscan_range_next(stack, ti);
     if (stack.no_value()) {
       return false;
     } else {
-      p_record_ptr = stack.get_value();
+      vchain_head = stack.get_value();
       return true;
     }
   }
 
   // TODO
-  //int scan(const Key &key, bool matchfirst, Scanner& scanner, threadinfo &ti) const override {}
+  // int scan(const Key &key, bool matchfirst, Scanner& scanner, threadinfo &ti)
+  // const override {}
 
   // TODO
-  //int rscan(const Key &key, bool matchfirst, Scanner& scanner, threadinfo &ti) const override {}
+  // int rscan(const Key &key, bool matchfirst, Scanner& scanner, threadinfo
+  // &ti) const override {}
 
-private:
+ private:
   /**
-  FIXME: masstree should manage leafvalue carefully to avoid concurrent problems.
+  FIXME: masstree should manage leafvalue carefully to avoid concurrent
+  problems.
   */
-  void apply_put(leafvalue_type &value,
-                 RecordPtr *p_record_ptr, threadinfo &ti) {
-    (void) ti; //FIXME thread local内存池分配value的内存
-    value = p_record_ptr;
+  void apply_put(leafvalue_type &value, VersionChainHead *vchain_head,
+                 threadinfo &ti) {
+    (void)ti;  // FIXME thread local内存池分配value的内存
+    value = vchain_head;
   }
 
-private:
+ private:
   fulgur_masstree_type masstree_;
 };
 
-}
+}  // namespace fulgurdb

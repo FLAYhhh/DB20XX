@@ -1,119 +1,104 @@
 #pragma once
 #include <cstdint>
-#include "./utils.h"
 #include "data_types.h"
-#include "index_indirection.h"
-#include "record_location.h"
+#include "version_chain.h"
 #include "return_status.h"
-#include "transaction.h"
+#include "schema.h"
+#include "utils.h"
 
 namespace fulgurdb {
 
 class RecordHeader {
-friend class TransactionContext;
-public:
-  void set_transaction_id(uint64_t txn_id) {
-    txn_id_ = txn_id;
-  }
+ public:
+  /*
+   *  For several reasons:
+   *  1. write last_read_ts_ depends on the value of txn_id_
+   *  2. write txn_id_ depends on the value of last_read_ts_
+   *  So we need to hold the latch when during check and
+   *    modify these two fields
+   *
+   *  If a transaction have own the record(txn_id_ is set),
+   *    there is no need to hold the latch, because no one except
+   *    itself can modify the header.
+   */
+  Latch latch_;
 
   /**
-   * @brief
-   *   Record the reader with largest ts in [last_read_ts_]
-   *   Fulgurdb uses a pessimistic approch to do version control,
-   *     and set_last_read_timestamp() has some constrains with
-   *     txn_id_ in the record header. Hence we must hold
-   *     the latch of the record header during this funciton.
+   * When each transaction starts, system will assign it a unique
+   * global timestamp. This unique global timestamp is used as transaction id.
+   *
+   * If a transaction wants to create or modify a record, it must put its
+   * transaction id in this field.
    */
-  int set_last_read_timestamp(uint64_t reader_ts) {
-    latch_.lock();
-    if (end_ts_ < reader_ts)
-      return FULGUR_FAIL;
-    // Case1: no one own the version
-    if (txn_id_ == INVALID_TRANSACTION_ID) {
-      if (last_read_ts_ < reader_ts)
-        last_read_ts_ = reader_ts;
-    // Case2: An older transaction has owned the version
-    // TODO: since the owner will set the last_read_ts_ to
-    // its txn_id, we don't need to do anything here.
-    } else if (reader_ts < txn_id_) {
-      if (last_read_ts_ < reader_ts)
-        last_read_ts_ = reader_ts;
-    } else if (txn_id_ < reader_ts) {
-      latch_.unlock();
-      return false;
-    }
+  uint64_t txn_id_ = INVALID_TRANSACTION_ID;
 
-    latch_.unlock();
-  }
+  /**
+   * If a newer transaction reads one record, another older transaction
+   * can not modify this record anymore.
+   *
+   * We record the newest transaction id of all readers to this record.
+   */
+  uint64_t last_read_ts_ = INVALID_READ_TIMESTAMP;
 
-  void set_begin_timestamp(uint64_t begin_ts) {
-    begin_ts_ = begin_ts;
-  }
+  /**
+   * [committed vs uncommited]
+   * If begin_ts_ == MAX_TIMESTAMP, the record is uncommited.
+   * Else, the record is committed.
+   *
+   * For a transaction with transaction id [txn_x]:
+   * Committed records having (begin_ts_ <= txn_x < end_ts_) is visible to
+   * the transaction.
+   * Uncommited records having (txn_id_ == txn_x) is visible to the transaction
+   *
+   * If end_ts_ == 0, the record is deleted.
+   */
+  uint64_t begin_ts_ = MAX_TIMESTAMP;
+  uint64_t end_ts_ = MAX_TIMESTAMP;
 
-  void set_end_timestamp(uint64_t end_ts) {
-    end_ts_ = end_ts;
-  }
+  /**
+   * older_version_ points to a older record in the MVCC version chain.
+   * newer_version_ points to a newer record in the MVCC version chain.
+   */
+  Record *older_version_ = nullptr;
+  Record *newer_version_ = nullptr;
 
-  void set_indirection(RecordPtr *p_record_ptr) {
-    indirection_ = p_record_ptr;
-  }
-
-  uint64_t get_transaction_id() const {
-    return txn_id_;
-  }
-
-  uint64_t get_begin_timestamp() const {
-    return begin_ts_;
-  }
-
-  uint64_t get_end_timestamp() const {
-    return end_ts_;
-  }
-
-  //@comment: be careful, initialization must be correct
-  void init() {
-    // latch_ has default ctor
-    txn_id_ = INVALID_TRANSACTION_ID;
-    last_read_ts_ = INVALID_READ_TIMESTAMP;
-    begin_ts_ = MAX_TIMESTAMP;
-    end_ts_ = MAX_TIMESTAMP;
-    older_.init();
-    newer_.init();
-    indirection_ = nullptr;
-  }
-
-private:
-  Latch latch_;
-  uint64_t txn_id_;
-  uint64_t last_read_ts_;
-  uint64_t begin_ts_;
-  uint64_t end_ts_;
-  Record *older_;
-  Record *newer_;
-  RecordPtr *indirection_;
+  /**
+   * MVCC version chain is a linked list with a fake head.
+   * vchain_head_ is the MVCC version chain head.
+   *
+   * The value type of Primary Index in fulgurdb is [VersionChainHead *].
+   */
+  VersionChainHead *vchain_head_ = nullptr;
 } __attribute__((aligned(64)));
 
 class Record {
-public:
-  void init_header() {
-    header_.init();
-  }
+  friend class TransactionContext;
 
-  char *get_record_payload() {
-    return payload_;
-  }
+ public:
+  void init();
+  void lock_header();
+  void unlock_header();
 
-  RecordHeader *get_record_header() {
-    return &header_;
-  }
+  void set_transaction_id(uint64_t txn_id);
+  void set_begin_timestamp(uint64_t begin_ts);
+  void set_end_timestamp(uint64_t end_ts);
+  void set_last_read_timestamp(uint64_t last_read_ts);
+  uint64_t get_transaction_id() const;
+  uint64_t get_begin_timestamp() const;
+  uint64_t get_end_timestamp() const;
+  Record *get_newer_version();
+  Record *get_older_version();
+  void set_vchain_head(VersionChainHead *vchain_head);
+  VersionChainHead *get_vchain_head();
 
-  void set_indirection(RecordPtr *p_record_ptr) {
-    header_.set_indirection(p_record_ptr);
-  }
+  void load_data_from_mysql(char *mysql_record, const Schema &schema);
+  void load_data_to_mysql(char *mysql_record, const Schema &schema);
+  char *get_payload();
+  RecordHeader *get_header();
 
-private:
+ private:
   RecordHeader header_;
-  char payload_[0]; //payload lenght is specified in table
+  char payload_[0];  // payload lenght is specified in table
 };
 
-} // end of namespace fulgurdb
+}  // end of namespace fulgurdb

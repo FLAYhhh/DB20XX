@@ -29,6 +29,7 @@ const int FURGUR_TYPE_NUMS = TYPE_ID_UPBOUND;
 const uint64_t INVALID_TRANSACTION_ID = 0;
 const uint64_t INVALID_READ_TIMESTAMP = 0;
 const uint64_t INVALID_TIMESTAMP = 0;
+const uint64_t MIN_TIMESTAMP = 0;
 const uint64_t MAX_TIMESTAMP = std::numeric_limits<uint64_t>::max();
 
 // epoch-based transaction id

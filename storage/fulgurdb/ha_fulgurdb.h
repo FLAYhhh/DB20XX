@@ -44,6 +44,7 @@
 #include "my_base.h" /* ha_rows */
 #include "my_compiler.h"
 #include "my_inttypes.h"
+#include "record_location.h"
 #include "sql/handler.h" /* handler */
 #include "sql/table.h"
 #include "sql/field.h"
@@ -70,14 +71,14 @@ class ha_fulgurdb : public handler {
   Fulgurdb_share *share;        ///< Shared lock info
   Fulgurdb_share *get_share();  ///< Get the share
 
-  fulgurdb::Table *se_table_;
+  fulgurdb::Table *fulgur_table_;
 
   /**
      for sequential scan
      rnd_init()
      rnd_next()
   */
-  fulgurdb::RecordLocation seq_scan_cursor_;
+  fulgurdb::TableScanCursor seq_scan_cursor_;
   fulgurdb::scan_stack_type masstree_scan_stack_;
 
   /**
@@ -90,6 +91,8 @@ class ha_fulgurdb : public handler {
     用于记录scan的方向
   */
   enum ha_rkey_function scan_direction_;
+
+  fulgurdb::Record *current_record_;
 
  public:
   ha_fulgurdb(handlerton *hton, TABLE_SHARE *table_arg);
