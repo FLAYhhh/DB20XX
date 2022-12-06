@@ -44,13 +44,13 @@
 #include "my_base.h" /* ha_rows */
 #include "my_compiler.h"
 #include "my_inttypes.h"
-#include "record_location.h"
 #include "sql/field.h"
 #include "sql/handler.h" /* handler */
 #include "sql/table.h"
 #include "thr_lock.h" /* THR_LOCK, THR_LOCK_DATA */
 
-#include "./engine.h"
+#include "engine.h"
+#include "record.h"
 
 /** @brief
   Fulgurdb_share is a class that will be shared among all open handlers.

@@ -26,8 +26,12 @@ ha_fulgurdb_help.cc
 engine.cc
 database.cc
 table.cc
-record_location.cc
 utils.cc
+epoch.cc
+record.cc
+record_block.cc
+transaction.cc
+version_chain.cc
 
 masstree-beta/compiler.cc
 masstree-beta/kvthread.cc

@@ -8,7 +8,6 @@
 #include "epoch.h"
 #include "record.h"
 #include "record_block.h"
-#include "record_location.h"
 #include "return_status.h"
 #include "utils.h"
 #include "version_chain.h"

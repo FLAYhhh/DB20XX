@@ -1,8 +1,8 @@
 #pragma once
 // header files exported by SE
-#include "./utils.h"
-#include "./schema.h"
-#include "./engine.h"
+#include "utils.h"
+#include "schema.h"
+#include "engine.h"
 
 
 // header files exported by SL and used in ha_fulgurdb.cc
@@ -11,7 +11,7 @@
 #include "mysql/plugin.h"
 #include "sql/sql_class.h"
 #include "sql/sql_plugin.h"
-#include "thread_local.h"
+#include "thread_context.h"
 #include "typelib.h"
 
 

@@ -1,11 +1,11 @@
 #pragma once
 #include <atomic>
-#include "./cuckoo_map.h"
-#include "./index.h"
-#include "./record_block.h"
-#include "./return_status.h"
-#include "./schema.h"
-#include "./thread_local.h"
+#include "cuckoo_map.h"
+#include "index.h"
+#include "record_block.h"
+#include "return_status.h"
+#include "schema.h"
+#include "thread_context.h"
 #include "data_types.h"
 #include "version_chain.h"
 #include "transaction.h"

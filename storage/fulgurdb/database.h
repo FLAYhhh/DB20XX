@@ -1,6 +1,6 @@
 #pragma once
-#include "./utils.h"
-#include "./table.h"
+#include "utils.h"
+#include "table.h"
 namespace fulgurdb {
 class Database{
 public:

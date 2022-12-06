@@ -285,7 +285,6 @@ int Table::alloc_record(Record *&record, ThreadContext *thd_ctx) {
     record_allocators_[writer_idx] = alloc_record_block();
   }
 
-
   return status;
 }
 

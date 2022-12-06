@@ -1,4 +1,3 @@
-#pragma once
 #include "version_chain.h"
 #include "record.h"
 

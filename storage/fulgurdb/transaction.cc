@@ -3,10 +3,9 @@
 #include <exception>
 #include "data_types.h"
 #include "record.h"
-#include "record_location.h"
 #include "return_status.h"
 #include "table.h"
-#include "thread_local.h"
+#include "thread_context.h"
 #include "version_chain.h"
 namespace fulgurdb {
 
@@ -106,7 +105,8 @@ int TransactionContext::mvto_update(Record *old_record, char *new_mysql_record,
       new_record->set_older_version(old_record);
       new_record->set_vchain_head(old_record->get_vchain_head());
       new_record->set_transaction_id(transaction_id_);
-      add_to_update_set(old_record);
+      //add_to_update_set(old_record);
+      add_to_modify_set(old_record);
       return FULGUR_SUCCESS;
     }
   } else {
@@ -182,59 +182,18 @@ int TransactionContext::get_transaction_status() {
 }
 
 int TransactionContext::commit() {
-  // Insert:
-  // for insert records, we need to make it visiable,
-  // free latch & set begin/end timestamp
-  for (auto &record : txn_insert_set_) {
-    record->set_begin_timestamp(transaction_id_);
-    // we should have set end_ts_ in mvto_insert()
-    // record->set_end_timestamp(MAX_TIMESTAMP);
+  for (auto record: txn_modify_set_) {
+    // Update & delete operation
+    if (record->get_newer_version() != nullptr) {
+      VersionChainHead *vchain_head = record->get_vchain_head();
+      vchain_head->set_latest_record(record);
+      record->set_begin_timestamp(transaction_id_);
+    }
+    // Insert operation
+    if (record->get_begin_timestamp() == MAX_TIMESTAMP)
+      record->set_begin_timestamp(transaction_id_);
 
-    // TODO: add memory fence here
-    record->set_transaction_id(INVALID_TRANSACTION_ID);
-  }
-  // Update:
-  // txn_update_set_ contains old records
-  for (auto &record : txn_update_set_) {
-    VersionChainHead *vchain_head = record->get_vchain_head();
-    Record *new_version = record->get_newer_version();
-
-    vchain_head->set_latest_record(new_version);
-    // set end_ts_ of old record at committed,
-    // because other transaction can get visibility info by
-    // txn_id_ of old record
-    record->set_end_timestamp(transaction_id_);
-    new_version->set_begin_timestamp(transaction_id_);
-
-    // TODO:add memory fence here
-    record->set_transaction_id(INVALID_TRANSACTION_ID);
-    new_version->set_transaction_id(INVALID_TRANSACTION_ID);
-  }
-
-  for (auto record : txn_delete_set_) {
-    VersionChainHead *vchain_head = record->get_vchain_head();
-    Record *new_version = record->get_newer_version();
-
-    vchain_head->set_latest_record(new_version);
-    record->set_end_timestamp(transaction_id_);
-    // we should have set end_ts_ in mvto_delete()
-    // new_version->set_end_timestamp(MIN_TIMESTAMP);
-    new_version->set_begin_timestamp(transaction_id_);
-
-    // TODO: add memory fence here;
-    record->set_transaction_id(INVALID_TRANSACTION_ID);
-    new_version->set_transaction_id(INVALID_TRANSACTION_ID);
-  }
-
-  for (auto record : txn_ins_del_set_) {
-    // we should have set end_ts_ in mvto_delete()
-    // record->set_end_timestamp(MIN_TIMESTAMP);
-    record->set_transaction_id(INVALID_TRANSACTION_ID);
-  }
-
-  // Read Own:
-  // for read own records, we just need to free the latch
-  for (auto &record : txn_read_own_set_) {
+    // TODO: add memory fence
     record->set_transaction_id(INVALID_TRANSACTION_ID);
   }
 
@@ -244,31 +203,21 @@ int TransactionContext::commit() {
 }
 
 void TransactionContext::abort() {
-  // FIXME: Now, leave the insert version in index, and make it invisible
-  for (auto &record : txn_insert_set_) {
-    // FIXME: delete from index
-    record->set_end_timestamp(MIN_TIMESTAMP);
+  for (auto record: txn_modify_set_) {
+    if (record->get_newer_version() != nullptr) {
+      Record *new_version = record->get_newer_version();
+      new_version->set_end_timestamp(MIN_TIMESTAMP);
+      record->set_newer_version(nullptr);
+    }
+
+    if (record->get_begin_timestamp() == MAX_TIMESTAMP) {
+      record->set_end_timestamp(MIN_TIMESTAMP);
+    }
+
+    // TODO: add memory fence
     record->set_transaction_id(INVALID_TRANSACTION_ID);
   }
 
-  // leave ins-del record as it is.
-  for (auto &record : txn_ins_del_set_) {
-    record->set_transaction_id(INVALID_TRANSACTION_ID);
-  }
-
-  // restore original latest version
-  for (auto &record : txn_delete_set_) {
-    Record *new_version = record->get_newer_version();
-    new_version->set_end_timestamp(MIN_TIMESTAMP);
-    record->set_newer_version(nullptr);
-
-    record->set_transaction_id(INVALID_TRANSACTION_ID);
-    new_version->set_transaction_id(INVALID_TRANSACTION_ID);
-  }
-
-  for (auto &record : txn_read_own_set_) {
-    record->set_transaction_id(INVALID_TRANSACTION_ID);
-  }
 }
 
 //===================private member funcitons============================

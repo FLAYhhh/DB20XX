@@ -1,6 +1,8 @@
 #pragma once
 #include <sys/types.h>
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <unordered_map>
 #include "utils.h"
 #include "data_types.h"
@@ -70,6 +72,7 @@ public:
    *   and return a transaction id in current global epoch
    */
   static uint64_t enter_epoch(uint64_t thread_id) {
+    /*
     while (true) {
       uint64_t cur_global_epoch_id = get_current_global_epoch_id();
       bool ret = local_epochs_[thread_id]->enter_epoch(cur_global_epoch_id);
@@ -78,6 +81,10 @@ public:
         return (cur_global_epoch_id << 32) | next_txn_id;
       }
     }
+    */
+    // FIXME: do not use epoch for now
+    (void) thread_id;
+    return current_global_epoch_id_.fetch_add(1, std::memory_order_relaxed);
   }
 
   static uint64_t get_current_global_epoch_id() {
@@ -92,6 +99,7 @@ private:
   //only least significant 32 bits is used,
   //because we will do left shift(<< 32) to current_global_epoch_id_
   static std::atomic<uint64_t> current_global_epoch_id_;
+  static std::mutex local_epochs_lock_;
   static std::unordered_map<int, LocalEpochManager*> local_epochs_;
 
   static std::atomic<uint32_t> next_global_txn_id_;

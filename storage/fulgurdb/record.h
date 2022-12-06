@@ -73,7 +73,8 @@ class RecordHeader {
    * The value type of Primary Index in fulgurdb is [VersionChainHead *].
    */
   VersionChainHead *vchain_head_ = nullptr;
-} __attribute__((aligned(64)));
+};
+//__attribute__((aligned(64)));
 
 class Record {
   friend class TransactionContext;

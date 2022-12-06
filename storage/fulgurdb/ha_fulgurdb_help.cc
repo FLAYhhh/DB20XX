@@ -1,4 +1,5 @@
 #include "./ha_fulgurdb_help.h"
+#include "thread_context.h"
 
 static void schema_add_inline_field(
               fulgurdb::Schema &schema,
@@ -126,17 +127,18 @@ extern handlerton *fulgurdb_hton;
 fulgurdb::threadinfo_type *get_threadinfo() {
   // ha_data is thread local data for storage engine
   // fulgurdb_hton->slot is the thread local data index for fulgurdb
-  fulgurdb::ThreadLocal *tl = reinterpret_cast<fulgurdb::ThreadLocal *>
+  fulgurdb::ThreadContext *thd_ctx = reinterpret_cast<fulgurdb::ThreadContext *>
                 (current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr);
-  if (tl == nullptr) {
-    tl = new fulgurdb::ThreadLocal(current_thd->thread_id());
-    current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr = tl;
+  if (thd_ctx == nullptr) {
+    thd_ctx = new fulgurdb::ThreadContext(current_thd->thread_id());
+    current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr = thd_ctx;
   }
-  fulgurdb::threadinfo_type *ti = tl->get_threadinfo();
+  fulgurdb::threadinfo_type *ti = thd_ctx->get_threadinfo();
   return ti;
 }
 
-fulgurdb::ThreadLocal *get_thread_ctx() {
-  return reinterpret_cast<fulgurdb::ThreadLocal *>
+
+fulgurdb::ThreadContext *get_thread_ctx() {
+  return reinterpret_cast<fulgurdb::ThreadContext *>
          (current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr);
 }

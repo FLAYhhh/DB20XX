@@ -1,6 +1,6 @@
 #pragma once
-#include "./masstree-beta/kvthread.hh"
-#include "./index.h"
+#include "masstree-beta/kvthread.hh"
+#include "index.h"
 #include "transaction.h"
 
 namespace fulgurdb {

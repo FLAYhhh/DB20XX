@@ -87,15 +87,14 @@
 
 #include "my_dbug.h"
 #include "mysql/plugin.h"
-#include "record_location.h"
 #include "return_status.h"
 #include "sql/sql_class.h"
 #include "sql/sql_plugin.h"
-#include "thread_local.h"
+#include "thread_context.h"
 #include "typelib.h"
 
-#include "./engine.h"
-#include "./ha_fulgurdb_help.h"
+#include "engine.h"
+#include "ha_fulgurdb_help.h"
 #include "transaction.h"
 
 static handler *fulgurdb_create_handler(handlerton *hton, TABLE_SHARE *table,
