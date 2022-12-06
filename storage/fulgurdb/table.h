@@ -45,6 +45,7 @@ class Table {
   int insert_record_from_mysql(char *mysql_record, ThreadContext *thd_ctx);
   int update_record_from_mysql(Record *old_record, char *new_mysql_record,
                                ThreadContext *thd_ctx);
+  int delete_record(Record *record, ThreadContext *thd_ctx);
   /**
   @brief
     Table scan without index

@@ -9,6 +9,7 @@ class Record;
 class VersionChainHead {
  public:
   char *get_latest_record_payload();
+  void set_latest_record(Record *latest_record);
   void init();
 
  public:

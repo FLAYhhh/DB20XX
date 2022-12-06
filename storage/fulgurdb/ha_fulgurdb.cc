@@ -310,42 +310,49 @@ int ha_fulgurdb::update_row(const uchar *old_row, uchar *new_row) {
 
 int ha_fulgurdb::delete_row(const uchar *) {
   DBUG_TRACE;
-  return HA_ERR_WRONG_COMMAND;
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
+  fulgur_table_->delete_record(current_record_, thd_ctx);
+
+  return 0;
 }
 
-int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
+int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
                             enum ha_rkey_function find_flag) {
   fulgurdb::Key fgdb_key(reinterpret_cast<char *>(const_cast<uchar *>(key)),
                          key_len, false);
-  fulgurdb::RecordLocation rloc;
+  fulgurdb::Record *record = nullptr;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
-  fulgurdb::threadinfo_type *ti = thd_ctx->get_threadinfo();
   bool found = false;
 
   // flag的定义见include/my_base.h
   scan_direction_ = find_flag;
   if (find_flag == HA_READ_KEY_EXACT) {
-    found =
-        fulgur_table_->get_record_from_index(active_index, fgdb_key, rloc, *ti);
+    found = fulgur_table_->get_record_from_index(active_index, fgdb_key, record,
+                                                 *thd_ctx, read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_NEXT) {
     found = fulgur_table_->index_scan_range_first(
-        active_index, fgdb_key, rloc, true, masstree_scan_stack_, *thd_ctx);
+        active_index, fgdb_key, record, true, masstree_scan_stack_, *thd_ctx,
+        read_own_statement_);
   } else if (find_flag == HA_READ_AFTER_KEY) {
     found = fulgur_table_->index_scan_range_first(
-        active_index, fgdb_key, rloc, false, masstree_scan_stack_, *thd_ctx);
+        active_index, fgdb_key, record, false, masstree_scan_stack_, *thd_ctx,
+        read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_PREV) {
     found = fulgur_table_->index_rscan_range_first(
-        active_index, fgdb_key, rloc, true, masstree_scan_stack_, *thd_ctx);
+        active_index, fgdb_key, record, true, masstree_scan_stack_, *thd_ctx,
+        read_own_statement_);
   } else if (find_flag == HA_READ_BEFORE_KEY) {
     found = fulgur_table_->index_rscan_range_first(
-        active_index, fgdb_key, rloc, false, masstree_scan_stack_, *thd_ctx);
+        active_index, fgdb_key, record, false, masstree_scan_stack_, *thd_ctx,
+        read_own_statement_);
   } else {
     // TODO:panic
     assert(false);
   }
 
   if (found) {
-    rloc.load_data_to_mysql((char *)record, fulgur_table_->get_schema());
+    record->load_data_to_mysql((char *)mysql_record,
+                               fulgur_table_->get_schema());
     return 0;
   } else
     return HA_ERR_KEY_NOT_FOUND;
@@ -356,8 +363,8 @@ int ha_fulgurdb::index_read(uchar *record, const uchar *key, uint key_len,
   Used to read forward through the index.
 */
 
-int ha_fulgurdb::index_next(uchar *record) {
-  fulgurdb::RecordLocation rloc;
+int ha_fulgurdb::index_next(uchar *mysql_record) {
+  fulgurdb::Record *record;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   bool found = false;
 
@@ -365,12 +372,14 @@ int ha_fulgurdb::index_next(uchar *record) {
     case HA_READ_KEY_OR_NEXT:
     case HA_READ_AFTER_KEY:
       found = fulgur_table_->index_scan_range_next(
-          active_index, rloc, masstree_scan_stack_, *thd_ctx);
+          active_index, record, masstree_scan_stack_, *thd_ctx,
+          read_own_statement_);
       break;
     case HA_READ_KEY_OR_PREV:
     case HA_READ_BEFORE_KEY:
       found = fulgur_table_->index_rscan_range_next(
-          active_index, rloc, masstree_scan_stack_, *thd_ctx);
+          active_index, record, masstree_scan_stack_, *thd_ctx,
+          read_own_statement_);
       break;
     default:
       // TODO:panic
@@ -379,8 +388,9 @@ int ha_fulgurdb::index_next(uchar *record) {
   }
 
   if (found) {
-    rloc.load_data_to_mysql((char *)record, fulgur_table_->get_schema());
-    current_record_.set_record(rloc.get_record());
+    record->load_data_to_mysql((char *)mysql_record,
+                               fulgur_table_->get_schema());
+    current_record_ = record;
     return 0;
   } else
     return HA_ERR_KEY_NOT_FOUND;
@@ -493,11 +503,11 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
   }
 
   // At this point, we've got a visible record version
-  seq_scan_cursor_.load_data_to_mysql((char *)sl_record,
-                                      fulgur_table_->get_schema());
+  seq_scan_cursor_.record_->load_data_to_mysql((char *)sl_record,
+                                               fulgur_table_->get_schema());
   table->set_found_row();
   seq_scan_cursor_.inc_cursor();
-  current_record_ = seq_scan_cursor_.get_record();
+  current_record_ = seq_scan_cursor_.record_;
 
   return 0;
 }
@@ -659,15 +669,17 @@ int ha_fulgurdb::external_lock(THD *thd, int lock_type) {
 
     fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
     fulgurdb::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
-    uint64_t thread_id = thd_ctx->get_thread_id();
-    txn_ctx->begin_transaction(thread_id);
-    // register in statement level
-    // FIXME: set 4th arg correctly (pointer to transaction id)
-    trans_register_ha(thd, false, ht, nullptr);
+    if (!txn_ctx->on_going()) {
+      uint64_t thread_id = thd_ctx->get_thread_id();
+      txn_ctx->begin_transaction(thread_id);
+      // register in statement level
+      // FIXME: set 4th arg correctly (pointer to transaction id)
+      trans_register_ha(thd, false, ht, nullptr);
 
-    if ((thd->in_multi_stmt_transaction_mode())) {
-      // register in session level
-      trans_register_ha(thd, true, ht, nullptr);
+      if ((thd->in_multi_stmt_transaction_mode())) {
+        // register in session level
+        trans_register_ha(thd, true, ht, nullptr);
+      }
     }
   }
 
@@ -878,6 +890,20 @@ int fulgurdb_commit(handlerton *hton, THD *thd, bool all) {
   return 0;
 }
 
+
+// FIXME: <NOT SURE>
+int fulgurdb_rollback(handlerton *hton, THD *thd, bool all) {
+  (void) hton;
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
+  fulgurdb::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+
+  bool real_commit = all || thd->in_active_multi_stmt_transaction();
+  if (real_commit) {
+    txn_ctx->abort();
+  }
+  return 0;
+}
+
 static int fulgurdb_init_func(void *p) {
   DBUG_TRACE;
 
@@ -885,6 +911,7 @@ static int fulgurdb_init_func(void *p) {
   fulgurdb_hton->state = SHOW_OPTION_YES;
   fulgurdb_hton->create = fulgurdb_create_handler;
   fulgurdb_hton->commit = fulgurdb_commit;
+  fulgurdb_hton->rollback = fulgurdb_rollback;
   fulgurdb_hton->flags = HTON_CAN_RECREATE;
   fulgurdb_hton->is_supported_system_table = fulgurdb_is_supported_system_table;
 

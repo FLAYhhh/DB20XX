@@ -45,10 +45,10 @@
 #include "my_compiler.h"
 #include "my_inttypes.h"
 #include "record_location.h"
+#include "sql/field.h"
 #include "sql/handler.h" /* handler */
 #include "sql/table.h"
-#include "sql/field.h"
-#include "thr_lock.h"    /* THR_LOCK, THR_LOCK_DATA */
+#include "thr_lock.h" /* THR_LOCK, THR_LOCK_DATA */
 
 #include "./engine.h"
 
@@ -67,7 +67,7 @@ class Fulgurdb_share : public Handler_share {
   Class definition for the storage engine
 */
 class ha_fulgurdb : public handler {
-  THR_LOCK_DATA lock;          ///< MySQL lock
+  THR_LOCK_DATA lock;           ///< MySQL lock
   Fulgurdb_share *share;        ///< Shared lock info
   Fulgurdb_share *get_share();  ///< Get the share
 
@@ -84,7 +84,7 @@ class ha_fulgurdb : public handler {
   /**
     for transaction
   */
-   bool read_own_statement_;
+  bool read_own_statement_;
 
   /*
     used by index_read() and index_next()
@@ -164,7 +164,9 @@ class ha_fulgurdb : public handler {
     There is no need to implement ..._key_... methods if your engine doesn't
     support indexes.
    */
-  uint max_supported_keys() const override { return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEYS); }
+  uint max_supported_keys() const override {
+    return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEYS);
+  }
 
   /** @brief
     unireg.cc will call this to make sure that the storage engine can handle
@@ -175,7 +177,9 @@ class ha_fulgurdb : public handler {
     There is no need to implement ..._key_... methods if your engine doesn't
     support indexes.
    */
-  uint max_supported_key_parts() const override { return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_PARTS); }
+  uint max_supported_key_parts() const override {
+    return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_PARTS);
+  }
 
   /** @brief
     unireg.cc will call this to make sure that the storage engine can handle
@@ -186,7 +190,9 @@ class ha_fulgurdb : public handler {
     There is no need to implement ..._key_... methods if your engine doesn't
     support indexes.
    */
-  uint max_supported_key_length() const override { return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_LENGTH); }
+  uint max_supported_key_length() const override {
+    return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_LENGTH);
+  }
 
   /** @brief
     Called in test_quick_select to determine if indexes should be used.
@@ -238,7 +244,7 @@ class ha_fulgurdb : public handler {
   int delete_row(const uchar *buf) override;
 
   int index_read(uchar *buf, const uchar *key, uint key_len,
-                         enum ha_rkey_function find_flag) override;
+                 enum ha_rkey_function find_flag) override;
 
   /** @brief
     We implement this in ha_fulgurdb.cc. It's not an obligatory method;

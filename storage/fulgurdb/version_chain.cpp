@@ -7,6 +7,10 @@ char *VersionChainHead::get_latest_record_payload() {
   return latest_record_->get_payload();
 }
 
+void VersionChainHead::set_latest_record(Record *latest_record) {
+  latest_record_ = latest_record;
+}
+
 void VersionChainHead::init() { latest_record_ = nullptr; }
 
 int VersionChainHeadBlock::alloc_vchain_head(VersionChainHead *&vchain_head) {

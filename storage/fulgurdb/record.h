@@ -1,10 +1,10 @@
 #pragma once
 #include <cstdint>
 #include "data_types.h"
-#include "version_chain.h"
 #include "return_status.h"
 #include "schema.h"
 #include "utils.h"
+#include "version_chain.h"
 
 namespace fulgurdb {
 
@@ -36,7 +36,11 @@ class RecordHeader {
    * If a newer transaction reads one record, another older transaction
    * can not modify this record anymore.
    *
-   * We record the newest transaction id of all readers to this record.
+   * Hence we need to record the newest transaction id of all readers
+   * to this record. To help us coordinate writer and reader of a record.
+   *
+   * last_read_ts_ is only useful for latest version
+   * (begin_ts_ != MAX_TIMESTAMP && end_ts_ == MAX_TIMESTAMP)
    */
   uint64_t last_read_ts_ = INVALID_READ_TIMESTAMP;
 
@@ -83,9 +87,12 @@ class Record {
   void set_begin_timestamp(uint64_t begin_ts);
   void set_end_timestamp(uint64_t end_ts);
   void set_last_read_timestamp(uint64_t last_read_ts);
+  void set_older_version(Record *record);
+  void set_newer_version(Record *record);
   uint64_t get_transaction_id() const;
   uint64_t get_begin_timestamp() const;
   uint64_t get_end_timestamp() const;
+  uint64_t get_last_read_timestamp() const;
   Record *get_newer_version();
   Record *get_older_version();
   void set_vchain_head(VersionChainHead *vchain_head);

@@ -1,5 +1,6 @@
 #include "table.h"
-#include "index_indirection.h"
+#include "version_chain.h"
+#include "transaction.h"
 #include "version_chain.h"
 
 namespace fulgurdb {
@@ -42,7 +43,13 @@ int Table::update_record_from_mysql(Record *old_record,
                                     char *new_mysql_record,
                                     ThreadContext *thd_ctx) {
   TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
-  txn_ctx->mvto_update(old_record, new_mysql_record, this, thd_ctx);
+  return txn_ctx->mvto_update(old_record, new_mysql_record, this, thd_ctx);
+}
+
+//=====================Delete operation==============================
+int Table::delete_record(Record *record, ThreadContext *thd_ctx) {
+  TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+  return txn_ctx->mvto_delete(record, this, thd_ctx);
 }
 
 //=====================Table scan=====================================

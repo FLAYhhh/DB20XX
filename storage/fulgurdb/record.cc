@@ -1,4 +1,5 @@
 #include "record.h"
+#include <cstdint>
 namespace fulgurdb {
 //======================manipulate record header===============================
 void Record::init() {
@@ -22,10 +23,19 @@ void Record::set_end_timestamp(uint64_t end_ts) { header_.end_ts_ = end_ts; }
 void Record::set_last_read_timestamp(uint64_t last_read_ts) {
   header_.last_read_ts_ = last_read_ts;
 }
+void Record::set_older_version(Record *record) {
+  header_.older_version_ = record;
+}
+void Record::set_newer_version(Record *record) {
+  header_.newer_version_ = record;
+}
 
 uint64_t Record::get_transaction_id() const { return header_.txn_id_; }
 uint64_t Record::get_begin_timestamp() const { return header_.begin_ts_; }
 uint64_t Record::get_end_timestamp() const { return header_.end_ts_; }
+uint64_t Record::get_last_read_timestamp() const {
+  return header_.last_read_ts_;
+}
 Record *Record::get_newer_version() { return header_.newer_version_; }
 Record *Record::get_older_version() { return header_.older_version_; }
 
