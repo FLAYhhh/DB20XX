@@ -1,4 +1,6 @@
 #include "table.h"
+#include "message_logger.h"
+#include "return_status.h"
 #include "version_chain.h"
 #include "transaction.h"
 #include "version_chain.h"
@@ -28,7 +30,11 @@ int Table::insert_record_from_mysql(char *mysql_record,
   Record *record = nullptr;
 
   status = alloc_record(record, thd_ctx);
-  if (status != FULGUR_SUCCESS) return status;
+  if (status != FULGUR_SUCCESS) {
+
+    LOG_DEBUG("alloc_record failed");
+    return status;
+  }
 
   record->load_data_from_mysql(mysql_record, schema_);
 
@@ -74,7 +80,10 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
     scan_cursor.idx_in_block_ = 0;
     table_scan_cached_block_ = get_record_block(scan_cursor.block_id_);
 
-    if (scan_cursor.block_id_ >= next_record_block_id_) return FULGUR_END_OF_TABLE;
+    if (scan_cursor.block_id_ >= next_record_block_id_) {
+      LOG_DEBUG("table scan end");
+      return FULGUR_END_OF_TABLE;
+    }
   }
 
   table_scan_cached_block_->get_record(&scan_cursor);
@@ -86,12 +95,25 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
   //   2. read (typically in select operation)
 
   TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+  int ret = txn_ctx->mvto_read_single_version(scan_cursor.record_, read_own);
+  if (ret == FULGUR_ABORT || ret == FULGUR_RETRY) {
+    txn_ctx->set_abort();
+  }
+  return ret;
+#if 0
+  // TODO: do get_visibility in mvto_read_single_version()
   auto visibility = txn_ctx->mvto_get_visibility(scan_cursor.record_);
   if (visibility == RecordVersionVisibility::VISIBLE) {
-    return txn_ctx->mvto_read_single_version(scan_cursor.record_, read_own);
+    int ret = txn_ctx->mvto_read_single_version(scan_cursor.record_, read_own);
+    if (ret == FULGUR_ABORT || ret == FULGUR_RETRY) {
+      txn_ctx->set_abort();
+    }
+    return ret;
   } else {
-    return FULGUR_GET_INVISIBLE_VERSION;
+    LOG_DEBUG("get invisible version");
+    return FULGUR_INVISIBLE_VERSION;
   }
+#endif 
 }
 
 //===================Index Operations===========================
@@ -139,7 +161,10 @@ bool Table::get_record_from_index(uint32_t idx, const Key &key,
                                   ThreadContext &thd_ctx, bool read_own) {
   VersionChainHead *vchain_head = nullptr;
   bool found = indexes_[idx]->get(key, vchain_head, *thd_ctx.ti_);
-  if (!found) return false;
+  if (!found) {
+    LOG_DEBUG("do not find in index");
+    return false;
+  }
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
@@ -147,8 +172,10 @@ bool Table::get_record_from_index(uint32_t idx, const Key &key,
       txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
   if (ret == FULGUR_SUCCESS)
     return true;
-  else
+  else {
+    LOG_DEBUG("can not find a visible version");
     return false;
+  }
 }
 
 bool Table::index_scan_range_first(uint32_t idx, const Key &key,

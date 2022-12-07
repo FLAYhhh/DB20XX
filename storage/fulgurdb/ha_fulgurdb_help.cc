@@ -139,6 +139,11 @@ fulgurdb::threadinfo_type *get_threadinfo() {
 
 
 fulgurdb::ThreadContext *get_thread_ctx() {
-  return reinterpret_cast<fulgurdb::ThreadContext *>
-         (current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr);
+  fulgurdb::ThreadContext *thd_ctx = reinterpret_cast<fulgurdb::ThreadContext *>
+                (current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr);
+  if (thd_ctx == nullptr) {
+    thd_ctx = new fulgurdb::ThreadContext(current_thd->thread_id());
+    current_thd->get_ha_data(fulgurdb_hton->slot)->ha_ptr = thd_ctx;
+  }
+  return thd_ctx;
 }

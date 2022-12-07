@@ -85,6 +85,7 @@
 #include "storage/fulgurdb/ha_fulgurdb.h"
 #include <cstdint>
 
+#include "message_logger.h"
 #include "my_dbug.h"
 #include "mysql/plugin.h"
 #include "return_status.h"
@@ -492,12 +493,13 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
                                       thd_ctx);
   if (ret == fulgurdb::FULGUR_END_OF_TABLE) return HA_ERR_END_OF_FILE;
 
-  if (ret == fulgurdb::FULGUR_GET_INVISIBLE_VERSION) {
+  if (ret == fulgurdb::FULGUR_INVISIBLE_VERSION) {
     seq_scan_cursor_.inc_cursor();
     return rnd_next(sl_record);
   }
 
   if (ret == fulgurdb::FULGUR_RETRY || ret == fulgurdb::FULGUR_FAIL) {
+    fulgurdb::LOG_DEBUG("can not read a visible version, abort");
     return HA_ERR_GENERIC;
   }
 
@@ -881,7 +883,7 @@ int fulgurdb_commit(handlerton *hton, THD *thd, bool all) {
     return HA_ERR_GENERIC;  // FIXME
   }
 
-  bool real_commit = all || thd->in_active_multi_stmt_transaction();
+  bool real_commit = all || !thd->in_multi_stmt_transaction_mode();
   if (real_commit) {
     txn_ctx->commit();
   }

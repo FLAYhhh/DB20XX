@@ -35,9 +35,9 @@ class TransactionContext {
   int mvto_read_version_chain(VersionChainHead &version_head, bool read_own,
                               Record *&record);
   int get_transaction_status();
+  void set_abort();
   int commit();
   void abort();
-  void set_read_only();
 
  private:
   void update_last_read_ts_if_need(Record *record);

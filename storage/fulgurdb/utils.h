@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cassert>
 #include <atomic>
+#include "message_logger.h"
 
 
 namespace fulgurdb {
@@ -30,8 +31,5 @@ class Latch {
   private:
     std::atomic_flag flag = ATOMIC_FLAG_INIT;
 };
-
-// TODO: 完善打印函数
-void LOG_ERROR(const std::string &str);
 
 }
