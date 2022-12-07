@@ -37,6 +37,7 @@ void TransactionContext::mvto_insert(Record *record, Table *table,
         table->alloc_vchain_head_block();
   }
 
+  vchain_head->set_latest_record(record);
   record->set_vchain_head(vchain_head);
   record->set_transaction_id(transaction_id_);
   record->set_last_read_timestamp(transaction_id_);
