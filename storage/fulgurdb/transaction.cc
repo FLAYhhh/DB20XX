@@ -204,9 +204,7 @@ int TransactionContext::commit() {
   return FULGUR_SUCCESS;
 }
 
-void TransactionContext::set_abort() {
-  should_abort_ = true;
-}
+void TransactionContext::set_abort() { should_abort_ = true; }
 
 void TransactionContext::abort() {
   for (auto record : txn_modify_set_) {
@@ -223,8 +221,9 @@ void TransactionContext::abort() {
     // TODO: add memory fence
     record->set_transaction_id(INVALID_TRANSACTION_ID);
   }
-}
 
+  reset();
+}
 
 //===================private member funcitons============================
 int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
@@ -398,9 +397,9 @@ int TransactionContext::mvto_read_single_own(Record *record) {
 
   // visible situation 1: old version with proper [begin, end) timestamp
   // read old version do not need to hold the lock
-  if (record->get_end_timestamp() != MAX_TIMESTAMP
-      && record->get_begin_timestamp() <= transaction_id_
-      && transaction_id_ <= record->get_end_timestamp()) {
+  if (record->get_end_timestamp() != MAX_TIMESTAMP &&
+      record->get_begin_timestamp() <= transaction_id_ &&
+      transaction_id_ <= record->get_end_timestamp()) {
     LOG_DEBUG("visible but can not hold ownership of an old version");
     return FULGUR_ABORT;
   }
@@ -426,7 +425,9 @@ int TransactionContext::mvto_read_single_own(Record *record) {
       return FULGUR_RETRY;
     } else if (transaction_id_ < record->get_transaction_id()) {
       if (record->get_begin_timestamp() <= transaction_id_) {
-        LOG_DEBUG("a newer version have hold the ownership, assume it can commit, we should abort");
+        LOG_DEBUG(
+            "a newer version have hold the ownership, assume it can commit, we "
+            "should abort");
         record->unlock_header();
         return FULGUR_ABORT;
       } else {
@@ -435,9 +436,9 @@ int TransactionContext::mvto_read_single_own(Record *record) {
       }
     }
   } else {
-  // a unowned version
-    if (record->get_begin_timestamp() <= transaction_id_
-        && transaction_id_ < record->get_end_timestamp()) {
+    // a unowned version
+    if (record->get_begin_timestamp() <= transaction_id_ &&
+        transaction_id_ < record->get_end_timestamp()) {
       if (record->get_end_timestamp() == MAX_TIMESTAMP) {
         record->set_transaction_id(transaction_id_);
         record->unlock_header();
@@ -470,9 +471,9 @@ int TransactionContext::mvto_read_single_unown(Record *record) {
 
   // visible situation 1: old version with proper [begin, end) timestamp
   // read old version do not need to hold the lock
-  if (record->get_end_timestamp() != MAX_TIMESTAMP
-      && record->get_begin_timestamp() <= transaction_id_
-      && transaction_id_ <= record->get_end_timestamp()) {
+  if (record->get_end_timestamp() != MAX_TIMESTAMP &&
+      record->get_begin_timestamp() <= transaction_id_ &&
+      transaction_id_ <= record->get_end_timestamp()) {
     return FULGUR_SUCCESS;
   }
 
@@ -492,7 +493,10 @@ int TransactionContext::mvto_read_single_unown(Record *record) {
         return FULGUR_INVISIBLE_VERSION;
       }
     } else if (record->get_transaction_id() < transaction_id_) {
-      LOG_DEBUG("this version is owned by older transaction, should retry");
+      LOG_DEBUG(
+          "this version is owned by older transaction, should retry. older "
+          "transaction_id_:%lu, current_transaction_id_:%lu",
+          record->get_transaction_id(), transaction_id_);
       record->unlock_header();
       return FULGUR_RETRY;
     } else if (transaction_id_ < record->get_transaction_id()) {
@@ -506,9 +510,9 @@ int TransactionContext::mvto_read_single_unown(Record *record) {
       }
     }
   } else {
-  // a unowned version
-    if (record->get_begin_timestamp() <= transaction_id_
-        && transaction_id_ < record->get_end_timestamp()) {
+    // a unowned version
+    if (record->get_begin_timestamp() <= transaction_id_ &&
+        transaction_id_ < record->get_end_timestamp()) {
       update_last_read_ts_if_need(record);
       record->unlock_header();
       return FULGUR_SUCCESS;
@@ -564,6 +568,7 @@ void TransactionContext::reset() {
   thread_id_ = 0;
   started_ = false;
   should_abort_ = false;
+  txn_modify_set_.clear();
 }
 
 }  // namespace fulgurdb

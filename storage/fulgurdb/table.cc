@@ -1,7 +1,6 @@
 #include "table.h"
 #include "message_logger.h"
 #include "return_status.h"
-#include "version_chain.h"
 #include "transaction.h"
 #include "version_chain.h"
 
@@ -31,7 +30,6 @@ int Table::insert_record_from_mysql(char *mysql_record,
 
   status = alloc_record(record, thd_ctx);
   if (status != FULGUR_SUCCESS) {
-
     LOG_DEBUG("alloc_record failed");
     return status;
   }
@@ -45,8 +43,7 @@ int Table::insert_record_from_mysql(char *mysql_record,
   return status;
 }
 //=====================Update operation==============================
-int Table::update_record_from_mysql(Record *old_record,
-                                    char *new_mysql_record,
+int Table::update_record_from_mysql(Record *old_record, char *new_mysql_record,
                                     ThreadContext *thd_ctx) {
   TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
   return txn_ctx->mvto_update(old_record, new_mysql_record, this, thd_ctx);
@@ -71,6 +68,7 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
   if (scan_cursor.record_ == nullptr) {
     table_scan_cached_block_ = get_record_block(scan_cursor.block_id_);
   }
+  assert(table_scan_cached_block_ != nullptr);
 
   // jump to next useful block
   while (scan_cursor.idx_in_block_ ==
@@ -79,6 +77,7 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
     scan_cursor.block_id_ += 1;
     scan_cursor.idx_in_block_ = 0;
     table_scan_cached_block_ = get_record_block(scan_cursor.block_id_);
+    assert(table_scan_cached_block_ != nullptr);
 
     if (scan_cursor.block_id_ >= next_record_block_id_) {
       LOG_DEBUG("table scan end");
@@ -113,7 +112,7 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
     LOG_DEBUG("get invisible version");
     return FULGUR_INVISIBLE_VERSION;
   }
-#endif 
+#endif
 }
 
 //===================Index Operations===========================
@@ -143,7 +142,8 @@ void Table::insert_record_to_index(uint32_t idx, VersionChainHead *vchain_head,
   indexes_[idx]->put(*key, vchain_head, ti);
 }
 
-void Table::insert_record_to_index(VersionChainHead *vchain_head, threadinfo &ti) {
+void Table::insert_record_to_index(VersionChainHead *vchain_head,
+                                   threadinfo &ti) {
   for (size_t i = 0; i < indexes_.size(); i++) {
     insert_record_to_index(i, vchain_head, ti);
   }
@@ -156,8 +156,7 @@ void Table::insert_record_to_index(VersionChainHead *vchain_head, threadinfo &ti
   @retval true: key exists
   @retval false: key does not exist
 */
-bool Table::get_record_from_index(uint32_t idx, const Key &key,
-                                  Record *&record,
+bool Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
                                   ThreadContext &thd_ctx, bool read_own) {
   VersionChainHead *vchain_head = nullptr;
   bool found = indexes_[idx]->get(key, vchain_head, *thd_ctx.ti_);
@@ -168,8 +167,7 @@ bool Table::get_record_from_index(uint32_t idx, const Key &key,
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
-  int ret =
-      txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
   if (ret == FULGUR_SUCCESS)
     return true;
   else {
@@ -192,8 +190,7 @@ bool Table::index_scan_range_first(uint32_t idx, const Key &key,
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
-  int ret =
-      txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
   if (ret == FULGUR_SUCCESS) {
     return true;
   } else if (emit_firstkey) {
@@ -206,8 +203,8 @@ bool Table::index_scan_range_first(uint32_t idx, const Key &key,
 }
 
 bool Table::index_scan_range_next(uint32_t idx, Record *&record,
-                                 scan_stack_type &scan_stack,
-                                 ThreadContext &thd_ctx, bool read_own) const {
+                                  scan_stack_type &scan_stack,
+                                  ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   bool found =
       indexes_[idx]->scan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
@@ -215,8 +212,7 @@ bool Table::index_scan_range_next(uint32_t idx, Record *&record,
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
-  int ret =
-      txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
   if (ret == FULGUR_SUCCESS) {
     return true;
   }
@@ -238,14 +234,13 @@ bool Table::index_rscan_range_first(uint32_t idx, const Key &key,
   VersionChainHead *vchain_head = nullptr;
   scan_stack.reset();
 
-  bool found = indexes_[idx]->rscan_range_first(
-      key, vchain_head, emit_firstkey, scan_stack, *thd_ctx.ti_);
+  bool found = indexes_[idx]->rscan_range_first(key, vchain_head, emit_firstkey,
+                                                scan_stack, *thd_ctx.ti_);
   if (!found) return false;
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
-  int ret =
-      txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
   if (ret == FULGUR_SUCCESS) {
     return true;
   } else if (emit_firstkey) {
@@ -268,8 +263,7 @@ bool Table::index_rscan_range_next(uint32_t idx, Record *&record,
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
-  int ret =
-      txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
   if (ret == FULGUR_SUCCESS) {
     return true;
   }
@@ -325,7 +319,8 @@ RecordBlock *Table::alloc_record_block() {
   block = new (block) RecordBlock;
   block->record_length_ = complete_record_length;
   block->record_capacity_ = records_in_block_;
-  block->block_id_ = next_record_block_id_.fetch_add(1, std::memory_order_relaxed);
+  block->block_id_ =
+      next_record_block_id_.fetch_add(1, std::memory_order_relaxed);
 
   return block;
 }
