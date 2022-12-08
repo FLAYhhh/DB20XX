@@ -143,7 +143,7 @@ class Table {
   Schema schema_;
 
   // table storage
-  std::atomic<uint32_t> next_record_block_id_;
+  std::atomic<uint32_t> next_record_block_id_ = 0;
   const uint32_t DEFAULT_RECORDS_PER_BLOCK = 1024;
   uint32_t records_in_block_ = DEFAULT_RECORDS_PER_BLOCK;
   CuckooMap<uint32_t, RecordBlock *> record_blocks_;
@@ -154,7 +154,7 @@ class Table {
 
   // index
   std::vector<MasstreeIndex *> indexes_;
-  std::atomic<uint32_t> next_vchain_head_block_id;
+  std::atomic<uint32_t> next_vchain_head_block_id = 0;
   CuckooMap<uint32_t, VersionChainHeadBlock *> vchain_head_blocks_;
   std::array<VersionChainHeadBlock *, PARALLEL_WRITER_NUM>
       vchain_head_allocators_;

@@ -357,10 +357,12 @@ VersionChainHeadBlock *Table::alloc_vchain_head_block() {
 @brief add a block to table store
 */
 void Table::add_record_block(RecordBlock *block) {
+  LOG_TRACE("RecordBlock block_id_: %u", block->block_id_);
   record_blocks_.Upsert(block->block_id_, block);
 }
 
 void Table::add_vchain_head_block(VersionChainHeadBlock *block) {
+  LOG_TRACE("VchainHeadBlock block_id_: %u", block->block_id_);
   vchain_head_blocks_.Upsert(block->block_id_, block);
 }
 

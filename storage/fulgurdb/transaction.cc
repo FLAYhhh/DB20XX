@@ -250,6 +250,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     if (transaction_id_ == version_iter->get_transaction_id()) {
       version_iter->unlock_header();
       if (version_iter->get_end_timestamp() != MIN_TIMESTAMP) {
+        record = version_iter;
         return FULGUR_SUCCESS;
       } else {
         LOG_DEBUG("a deleted version");
