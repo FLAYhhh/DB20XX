@@ -353,6 +353,7 @@ int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
   if (found) {
     record->load_data_to_mysql((char *)mysql_record,
                                fulgur_table_->get_schema());
+    current_record_ = record;
     return 0;
   } else
     return HA_ERR_KEY_NOT_FOUND;
