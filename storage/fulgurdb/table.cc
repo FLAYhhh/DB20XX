@@ -66,23 +66,39 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
                           ThreadContext *thd_ctx) {
   // first time in the block
   if (scan_cursor.record_ == nullptr) {
+    LOG_TRACE(
+        "Scan start, scan_cursor.block_id_: %u, scan_cursor.idx_in_block_: %u",
+        scan_cursor.block_id_, scan_cursor.idx_in_block_);
     table_scan_cached_block_ = get_record_block(scan_cursor.block_id_);
   }
   assert(table_scan_cached_block_ != nullptr);
 
+  LOG_TRACE(
+      "scan_cursor.block_id_: %u, scan_cursor.idx_in_block_: %u, "
+      "cached_block_id: %u, cached_block.valid_record_num_: %u",
+      scan_cursor.block_id_, scan_cursor.idx_in_block_,
+      table_scan_cached_block_->block_id_,
+      table_scan_cached_block_->valid_record_num_.load());
   // jump to next useful block
   while (scan_cursor.idx_in_block_ ==
-         table_scan_cached_block_->valid_record_num_) {
+         table_scan_cached_block_->valid_record_num_.load()) {
     // have reached the end of current block, jump to next
     scan_cursor.block_id_ += 1;
     scan_cursor.idx_in_block_ = 0;
-    table_scan_cached_block_ = get_record_block(scan_cursor.block_id_);
-    assert(table_scan_cached_block_ != nullptr);
 
     if (scan_cursor.block_id_ >= next_record_block_id_) {
       LOG_DEBUG("table scan end");
       return FULGUR_END_OF_TABLE;
     }
+    table_scan_cached_block_ = get_record_block(scan_cursor.block_id_);
+    assert(table_scan_cached_block_ != nullptr);
+    LOG_DEBUG(
+        "swith to next block. scan_cursor.block_id_: %u, "
+        "scan_cursor.idx_in_block_: %u, cached_block_id: %u, "
+        "cached_block.valid_record_num_: %u",
+        scan_cursor.block_id_, scan_cursor.idx_in_block_,
+        table_scan_cached_block_->block_id_,
+        table_scan_cached_block_->valid_record_num_.load());
   }
 
   table_scan_cached_block_->get_record(&scan_cursor);
@@ -322,6 +338,8 @@ RecordBlock *Table::alloc_record_block() {
   block->block_id_ =
       next_record_block_id_.fetch_add(1, std::memory_order_relaxed);
 
+  add_record_block(block);
+
   return block;
 }
 
@@ -330,6 +348,8 @@ VersionChainHeadBlock *Table::alloc_vchain_head_block() {
   VersionChainHeadBlock *block = new VersionChainHeadBlock();
   block->block_id_ =
       next_vchain_head_block_id.fetch_add(1, std::memory_order_relaxed);
+
+  add_vchain_head_block(block);
   return block;
 }
 
@@ -349,7 +369,8 @@ void Table::add_vchain_head_block(VersionChainHeadBlock *block) {
 */
 RecordBlock *Table::get_record_block(uint32_t block_id) {
   RecordBlock *block;
-  record_blocks_.Find(block_id, block);
+  bool ret = record_blocks_.Find(block_id, block);
+  assert(ret == true);
   return block;
 }
 
@@ -361,14 +382,12 @@ RecordBlock *Table::get_record_block(uint32_t block_id) {
 void Table::init_record_allocators() {
   for (size_t i = 0; i < PARALLEL_WRITER_NUM; i++) {
     record_allocators_[i] = alloc_record_block();
-    add_record_block(record_allocators_[i]);
   }
 }
 
 void Table::init_vchain_head_allocators() {
   for (size_t i = 0; i < PARALLEL_WRITER_NUM; i++) {
     vchain_head_allocators_[i] = alloc_vchain_head_block();
-    add_vchain_head_block(vchain_head_allocators_[i]);
   }
 }
 
