@@ -184,19 +184,28 @@ int TransactionContext::get_transaction_status() {
 }
 
 int TransactionContext::commit() {
+  // TODO: Log Module should persist modify set at this time
+  // Because once we set begin_ts_, the record is visible to other transaction
   for (auto record : txn_modify_set_) {
     // Update & delete operation
-    if (record->get_newer_version() != nullptr) {
+    Record *new_version = record->get_newer_version();
+    if (new_version != nullptr) {
       VersionChainHead *vchain_head = record->get_vchain_head();
       vchain_head->set_latest_record(record);
       record->set_begin_timestamp(transaction_id_);
+
+      assert(new_version->get_begin_timestamp() == MAX_TIMESTAMP); //assert it's an uncommitted version
+      new_version->set_begin_timestamp(transaction_id_);
     }
     // Insert operation
     if (record->get_begin_timestamp() == MAX_TIMESTAMP)
       record->set_begin_timestamp(transaction_id_);
 
     // TODO: add memory fence
+    // release txn_id_ without lock is safe, because there is only one owner.
     record->set_transaction_id(INVALID_TRANSACTION_ID);
+    if (new_version)
+      new_version->set_transaction_id(INVALID_READ_TIMESTAMP);
   }
 
   // then reset status
@@ -208,7 +217,8 @@ void TransactionContext::set_abort() { should_abort_ = true; }
 
 void TransactionContext::abort() {
   for (auto record : txn_modify_set_) {
-    if (record->get_newer_version() != nullptr) {
+    Record *new_version = record->get_newer_version();
+    if (new_version != nullptr) {
       Record *new_version = record->get_newer_version();
       new_version->set_end_timestamp(MIN_TIMESTAMP);
       record->set_newer_version(nullptr);
@@ -220,6 +230,8 @@ void TransactionContext::abort() {
 
     // TODO: add memory fence
     record->set_transaction_id(INVALID_TRANSACTION_ID);
+    if (new_version)
+      new_version->set_transaction_id(INVALID_TRANSACTION_ID);
   }
 
   reset();
