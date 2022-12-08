@@ -352,6 +352,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
       version_iter->unlock_header();
       return FULGUR_FAIL;
     } else {
+      version_iter->set_transaction_id(transaction_id_);
       update_last_read_ts_if_need(version_iter);
       version_iter->unlock_header();
       record = version_iter;
