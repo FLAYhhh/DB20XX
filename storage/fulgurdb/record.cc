@@ -5,6 +5,7 @@
 namespace fulgurdb {
 //======================manipulate record header===============================
 void Record::init() {
+  header_.latch_.init();
   header_.txn_id_ = INVALID_TRANSACTION_ID;
   header_.last_read_ts_ = INVALID_READ_TIMESTAMP;
   header_.begin_ts_ = MAX_TIMESTAMP;

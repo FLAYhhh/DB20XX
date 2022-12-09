@@ -125,6 +125,8 @@ int TransactionContext::mvto_update(Record *old_record, char *new_mysql_record,
  */
 int TransactionContext::mvto_read_single_version(Record *record,
                                                  bool read_own) {
+  LOG_TRACE("transaction_id_:%lu, begin_ts_:%lu, end_ts_:%lu", transaction_id_,
+            record->get_begin_timestamp(), record->get_end_timestamp());
   if (read_own)
     return mvto_read_single_own(record);
   else
@@ -165,6 +167,8 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
   int retry_time = 0;
   int ret = FULGUR_RETRY;
   while (ret == FULGUR_RETRY && retry_time < 5) {
+    //TODO: sleep
+    //retry_time++;
     if (read_own) {
       ret = mvto_read_vchain_own(vchain_head, record);
     } else {
@@ -190,11 +194,11 @@ int TransactionContext::commit() {
     // Update & delete operation
     Record *new_version = record->get_newer_version();
     if (new_version != nullptr) {
+      record->set_end_timestamp(transaction_id_);
       VersionChainHead *vchain_head = record->get_vchain_head();
-      vchain_head->set_latest_record(record);
-      record->set_begin_timestamp(transaction_id_);
-
-      assert(new_version->get_begin_timestamp() == MAX_TIMESTAMP); //assert it's an uncommitted version
+      vchain_head->set_latest_record(new_version);
+      assert(new_version->get_begin_timestamp() ==
+             MAX_TIMESTAMP);  // assert it's an uncommitted version
       new_version->set_begin_timestamp(transaction_id_);
     }
     // Insert operation
@@ -204,11 +208,11 @@ int TransactionContext::commit() {
     // TODO: add memory fence
     // release txn_id_ without lock is safe, because there is only one owner.
     record->set_transaction_id(INVALID_TRANSACTION_ID);
-    if (new_version)
-      new_version->set_transaction_id(INVALID_READ_TIMESTAMP);
+    if (new_version) new_version->set_transaction_id(INVALID_READ_TIMESTAMP);
   }
 
   // then reset status
+  LOG_TRACE("Transaction:%lu commit", transaction_id_);
   reset();
   return FULGUR_SUCCESS;
 }
@@ -230,10 +234,10 @@ void TransactionContext::abort() {
 
     // TODO: add memory fence
     record->set_transaction_id(INVALID_TRANSACTION_ID);
-    if (new_version)
-      new_version->set_transaction_id(INVALID_TRANSACTION_ID);
+    if (new_version) new_version->set_transaction_id(INVALID_TRANSACTION_ID);
   }
 
+  LOG_TRACE("Transaction:%lu abort", transaction_id_);
   reset();
 }
 
@@ -257,7 +261,6 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
         return FULGUR_FAIL;
       }
     } else if (transaction_id_ < version_iter->get_begin_timestamp()) {
-      version_iter->unlock_header();
       if (version_iter == vchain_head.latest_record_)
         version_iter->unlock_header();
       version_iter = version_iter->get_older_version();
@@ -273,6 +276,8 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
       record = version_iter;
       return FULGUR_SUCCESS;
     } else if (version_iter->get_end_timestamp() == MIN_TIMESTAMP) {
+      if (version_iter == vchain_head.latest_record_)
+        version_iter->unlock_header();
       record = nullptr;
       LOG_DEBUG("meet a deleted version");
       return FULGUR_FAIL;

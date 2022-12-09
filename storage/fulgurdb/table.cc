@@ -66,19 +66,23 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
                           ThreadContext *thd_ctx) {
   // first time in the block
   if (scan_cursor.record_ == nullptr) {
+#if 0
     LOG_TRACE(
         "Scan start, scan_cursor.block_id_: %u, scan_cursor.idx_in_block_: %u",
         scan_cursor.block_id_, scan_cursor.idx_in_block_);
+#endif
     table_scan_cached_block_ = get_record_block(scan_cursor.block_id_);
   }
   assert(table_scan_cached_block_ != nullptr);
 
+#if 0
   LOG_TRACE(
       "scan_cursor.block_id_: %u, scan_cursor.idx_in_block_: %u, "
       "cached_block_id: %u, cached_block.valid_record_num_: %u",
       scan_cursor.block_id_, scan_cursor.idx_in_block_,
       table_scan_cached_block_->block_id_,
       table_scan_cached_block_->valid_record_num_.load());
+#endif
   // jump to next useful block
   while (scan_cursor.idx_in_block_ ==
          table_scan_cached_block_->valid_record_num_.load()) {
@@ -357,12 +361,12 @@ VersionChainHeadBlock *Table::alloc_vchain_head_block() {
 @brief add a block to table store
 */
 void Table::add_record_block(RecordBlock *block) {
-  LOG_TRACE("RecordBlock block_id_: %u", block->block_id_);
+  //LOG_TRACE("RecordBlock block_id_: %u", block->block_id_);
   record_blocks_.Upsert(block->block_id_, block);
 }
 
 void Table::add_vchain_head_block(VersionChainHeadBlock *block) {
-  LOG_TRACE("VchainHeadBlock block_id_: %u", block->block_id_);
+  //LOG_TRACE("VchainHeadBlock block_id_: %u", block->block_id_);
   vchain_head_blocks_.Upsert(block->block_id_, block);
 }
 
@@ -370,9 +374,10 @@ void Table::add_vchain_head_block(VersionChainHeadBlock *block) {
 @brief given a block id, get the block address of the table store
 */
 RecordBlock *Table::get_record_block(uint32_t block_id) {
-  RecordBlock *block;
+  RecordBlock *block = nullptr;
   bool ret = record_blocks_.Find(block_id, block);
   assert(ret == true);
+  (void)ret;
   return block;
 }
 

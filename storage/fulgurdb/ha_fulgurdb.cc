@@ -500,7 +500,7 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
   }
 
   if (ret == fulgurdb::FULGUR_RETRY || ret == fulgurdb::FULGUR_FAIL) {
-    fulgurdb::LOG_DEBUG("can not read a visible version, abort");
+    //fulgurdb::LOG_DEBUG("can not read a visible version, abort");
     return HA_ERR_GENERIC;
   }
 

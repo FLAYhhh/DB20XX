@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -20,8 +21,18 @@ namespace fulgurdb {
  */
 class Latch {
   public:
+    void init() {
+      flag.clear(std::memory_order_relaxed);
+    }
+
     void lock() {
-      while (flag.test_and_set(std::memory_order_acquire)) {}
+      uint64_t cnt = 0;
+      while (flag.test_and_set(std::memory_order_acquire)) {
+        cnt++;
+        if (cnt % 10000 == 0) {
+          LOG_TRACE("lock loop count:%lu", cnt);
+        }
+      }
     }
 
     void unlock() {
