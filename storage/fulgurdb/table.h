@@ -1,15 +1,18 @@
 #pragma once
+#include <sys/types.h>
 #include <atomic>
+#include <cstdint>
 #include "cuckoo_map.h"
+#include "data_types.h"
 #include "index.h"
+#include "record.h"
 #include "record_block.h"
 #include "return_status.h"
 #include "schema.h"
 #include "thread_context.h"
-#include "data_types.h"
-#include "version_chain.h"
 #include "transaction.h"
 #include "utils.h"
+#include "version_chain.h"
 
 namespace fulgurdb {
 
@@ -96,8 +99,8 @@ class Table {
    *  @retval false: End of index
    */
   bool index_scan_range_next(uint32_t idx, Record *&record,
-                            scan_stack_type &scan_stack, ThreadContext &thd_ctx,
-                            bool read_own) const;
+                             scan_stack_type &scan_stack,
+                             ThreadContext &thd_ctx, bool read_own) const;
 
   bool index_rscan_range_first(uint32_t idx, const Key &key, Record *&record,
                                bool emit_firstkey, scan_stack_type &scan_stack,
@@ -106,6 +109,18 @@ class Table {
   bool index_rscan_range_next(uint32_t idx, Record *&record,
                               scan_stack_type &scan_stack,
                               ThreadContext &thd_ctx, bool read_own) const;
+
+  uint32_t get_key_length(uint32_t idx) {
+    return indexes_[idx]->get_key_length();
+  }
+
+  bool index_prefix_key_search(uint32_t idx, const Key &key, Record *&record,
+                               scan_stack_type &scan_stack,
+                               ThreadContext &thd_ctx, bool read_own) const;
+
+  bool index_prefix_search_next(uint32_t idx, const Key &key, Record *&record,
+                                scan_stack_type &scan_stack,
+                                ThreadContext &thd_ctx, bool read_own) const;
 
  private:
   /**
@@ -133,6 +148,7 @@ class Table {
   */
   void init_record_allocators();
   void init_vchain_head_allocators();
+
  private:
   // static members
   static const uint32_t PARALLEL_WRITER_NUM = 16;

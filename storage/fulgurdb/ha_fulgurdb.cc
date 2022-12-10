@@ -318,8 +318,9 @@ int ha_fulgurdb::delete_row(const uchar *) {
 
 int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
                             enum ha_rkey_function find_flag) {
-  fulgurdb::Key fgdb_key(reinterpret_cast<char *>(const_cast<uchar *>(key)),
-                         key_len, false);
+  index_key_.set(reinterpret_cast<char *>(const_cast<uchar *>(key)), key_len,
+                 false);
+
   fulgurdb::Record *record = nullptr;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   bool found = false;
@@ -327,23 +328,29 @@ int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
   // flag的定义见include/my_base.h
   scan_direction_ = find_flag;
   if (find_flag == HA_READ_KEY_EXACT) {
-    found = fulgur_table_->get_record_from_index(active_index, fgdb_key, record,
-                                                 *thd_ctx, read_own_statement_);
+    if (key_len == fulgur_table_->get_key_length(active_index)) {
+      found = fulgur_table_->get_record_from_index(
+          active_index, index_key_, record, *thd_ctx, read_own_statement_);
+    } else {
+      found = fulgur_table_->index_prefix_key_search(
+          active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
+          read_own_statement_);
+    }
   } else if (find_flag == HA_READ_KEY_OR_NEXT) {
     found = fulgur_table_->index_scan_range_first(
-        active_index, fgdb_key, record, true, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, true, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_AFTER_KEY) {
     found = fulgur_table_->index_scan_range_first(
-        active_index, fgdb_key, record, false, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, false, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_PREV) {
     found = fulgur_table_->index_rscan_range_first(
-        active_index, fgdb_key, record, true, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, true, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_BEFORE_KEY) {
     found = fulgur_table_->index_rscan_range_first(
-        active_index, fgdb_key, record, false, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, false, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else {
     // TODO:panic
@@ -380,6 +387,11 @@ int ha_fulgurdb::index_next(uchar *mysql_record) {
     case HA_READ_BEFORE_KEY:
       found = fulgur_table_->index_rscan_range_next(
           active_index, record, masstree_scan_stack_, *thd_ctx,
+          read_own_statement_);
+      break;
+    case HA_READ_KEY_EXACT:
+      found = fulgur_table_->index_prefix_search_next(
+          active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
           read_own_statement_);
       break;
     default:
@@ -500,7 +512,7 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
   }
 
   if (ret == fulgurdb::FULGUR_RETRY || ret == fulgurdb::FULGUR_FAIL) {
-    //fulgurdb::LOG_DEBUG("can not read a visible version, abort");
+    // fulgurdb::LOG_DEBUG("can not read a visible version, abort");
     return HA_ERR_GENERIC;
   }
 
@@ -892,10 +904,9 @@ int fulgurdb_commit(handlerton *hton, THD *thd, bool all) {
   return 0;
 }
 
-
 // FIXME: <NOT SURE>
 int fulgurdb_rollback(handlerton *hton, THD *thd, bool all) {
-  (void) hton;
+  (void)hton;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   fulgurdb::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
 

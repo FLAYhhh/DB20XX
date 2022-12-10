@@ -168,7 +168,7 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
   int ret = FULGUR_RETRY;
   while (ret == FULGUR_RETRY && retry_time < 5) {
     //TODO: sleep
-    //retry_time++;
+    retry_time++;
     if (read_own) {
       ret = mvto_read_vchain_own(vchain_head, record);
     } else {

@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include "masstree-beta/kvthread.hh"
 #include "masstree-beta/masstree.hh"
 #include "masstree-beta/masstree_scan.hh"
@@ -17,12 +18,52 @@ using namespace Masstree;
 
 struct Key {
   Key(char *s, uint32_t l, bool own = true) : data(s), len(l), own_mem(own) {}
+  Key() {}
   ~Key() {
     if (own_mem) free(data);
   }
 
-  char *data;
-  uint32_t len;
+  void set(char *s, uint32_t l, bool own = false) {
+    data = s;
+    len = l;
+    own_mem = own;
+  }
+
+  void reset() {
+    data = nullptr;
+    len = 0;
+  }
+
+  static bool prefix_match(const Key &key1, const Key &key2) {
+    uint32_t min_len = key1.len;
+    if (key2.len < min_len) min_len = key2.len;
+
+    if (memcmp(key1.data, key2.data, min_len) == 0)
+      return true;
+    else
+      return false;
+  }
+
+  bool operator<(const Key &other) {
+    uint32_t min_len = len;
+    if (other.len < len) min_len = other.len;
+    if (memcmp(data, other.data, min_len) < 0)
+      return true;
+    else
+      return false;
+  }
+
+  bool operator>(const Key &other) {
+    uint32_t min_len = len;
+    if (other.len < len) min_len = other.len;
+    if (memcmp(data, other.data, min_len) > 0)
+      return true;
+    else
+      return false;
+  }
+
+  char *data = nullptr;
+  uint32_t len = 0;
   bool own_mem = true;
 };
 
@@ -33,12 +74,20 @@ struct KeyInfo {
   */
   void add_key_part(uint32_t key_part) { key_parts.push_back(key_part - 1); }
 
+  // const std::vector<int> &get_key_parts() const{
+  //   return key_parts;
+  // }
+
+  uint32_t get_key_length() { return key_len; }
+
   Schema schema;
   std::vector<int> key_parts;
   uint32_t key_len = 0;
 };
 
 class Index {
+  friend class Table;
+
  public:
   Index(void) {}
   Index(const KeyInfo &keyinfo) : keyinfo_(keyinfo) {}
@@ -47,7 +96,8 @@ class Index {
   virtual bool get(const Key &key, VersionChainHead *&vchain_head,
                    threadinfo &ti) const = 0;
 
-  virtual bool put(const Key &key, VersionChainHead *vchain_head, threadinfo &ti) = 0;
+  virtual bool put(const Key &key, VersionChainHead *vchain_head,
+                   threadinfo &ti) = 0;
 
   /**
   @brief
@@ -55,7 +105,7 @@ class Index {
   @args
     arg1 record: record payload, without record header
   */
-  std::unique_ptr<Key> build_key(const char *record) {
+  std::shared_ptr<Key> build_key(const char *record) {
     char *key_data = (char *)malloc(sizeof(keyinfo_.key_len));
     char *key_cursor = key_data;
     for (auto i : keyinfo_.key_parts) {
@@ -68,10 +118,16 @@ class Index {
       key_cursor += data_len;
     }
 
-    return std::unique_ptr<Key>(new Key(key_data, keyinfo_.key_len));
+    return std::shared_ptr<Key>(new Key(key_data, keyinfo_.key_len));
   }
 
- private:
+  uint32_t get_key_length() { return keyinfo_.get_key_length(); }
+  // const std::vector<int> &get_key_parts() const { return
+  // keyinfo_.get_key_parts(); }
+
+  const KeyInfo &get_key_info() const { return keyinfo_; }
+
+ protected:
   KeyInfo keyinfo_;
 };
 
@@ -93,6 +149,7 @@ typedef scanstackelt<nodeparam_type> scan_stack_type;
 class MasstreeIndex : public Index {
   typedef basic_table<fulgurdb_masstree_params> fulgur_masstree_type;
   typedef typename fulgurdb_masstree_params::value_type leafvalue_type;
+  friend class Table;
 
  public:
   MasstreeIndex(void) {}
@@ -112,7 +169,8 @@ class MasstreeIndex : public Index {
     @retval1 true: first put
     @retval2 false: not first put, update old value
   */
-  bool put(const Key &key, VersionChainHead *vchain_head, threadinfo &ti) override {
+  bool put(const Key &key, VersionChainHead *vchain_head,
+           threadinfo &ti) override {
     typename fulgur_masstree_type::cursor_type lp(masstree_,
                                                   Str(key.data, key.len));
     bool found = lp.find_insert(ti);

@@ -92,6 +92,11 @@ class ha_fulgurdb : public handler {
   */
   enum ha_rkey_function scan_direction_;
 
+  /**
+   *  used in index_next() if exists multiple exact/prefix key
+   */
+  fulgurdb::Key index_key_;
+
   fulgurdb::Record *current_record_;
 
  public:
