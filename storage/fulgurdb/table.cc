@@ -367,7 +367,7 @@ bool Table::index_prefix_search_next(uint32_t idx, const Key &key,
       assert(false);
       return false;
     } else if (*record_key > key) {
-      LOG_DEBUG("prefix search should stop");
+      //LOG_DEBUG("prefix search should stop");
       return false;
     }
 

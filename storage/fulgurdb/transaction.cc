@@ -71,7 +71,7 @@ int TransactionContext::mvto_delete(Record *record, Table *table,
       new_record->set_vchain_head(record->get_vchain_head());
       new_record->set_transaction_id(transaction_id_);
       // add_to_delete_set(new_record);
-      add_to_modify_set(record);
+      // add_to_modify_set(record);
       return FULGUR_SUCCESS;
     }
 
@@ -108,7 +108,7 @@ int TransactionContext::mvto_update(Record *old_record, char *new_mysql_record,
       new_record->set_vchain_head(old_record->get_vchain_head());
       new_record->set_transaction_id(transaction_id_);
       // add_to_update_set(old_record);
-      add_to_modify_set(old_record);
+      // add_to_modify_set(old_record);
       return FULGUR_SUCCESS;
     }
   } else {
@@ -127,9 +127,9 @@ int TransactionContext::mvto_read_single_version(Record *record,
                                                  bool read_own) {
   LOG_TRACE("transaction_id_:%lu, begin_ts_:%lu, end_ts_:%lu", transaction_id_,
             record->get_begin_timestamp(), record->get_end_timestamp());
-  if (read_own)
+  if (read_own) {
     return mvto_read_single_own(record);
-  else
+  } else
     return mvto_read_single_unown(record);
 }
 
@@ -166,8 +166,8 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
                                                 Record *&record) {
   int retry_time = 0;
   int ret = FULGUR_RETRY;
-  while (ret == FULGUR_RETRY && retry_time < 5) {
-    //TODO: sleep
+  while (ret == FULGUR_RETRY && retry_time < 1) {
+    // TODO: sleep
     retry_time++;
     if (read_own) {
       ret = mvto_read_vchain_own(vchain_head, record);
@@ -197,6 +197,7 @@ int TransactionContext::commit() {
       record->set_end_timestamp(transaction_id_);
       VersionChainHead *vchain_head = record->get_vchain_head();
       vchain_head->set_latest_record(new_version);
+      // FIXME:BUG, assertion failed
       assert(new_version->get_begin_timestamp() ==
              MAX_TIMESTAMP);  // assert it's an uncommitted version
       new_version->set_begin_timestamp(transaction_id_);
@@ -208,7 +209,7 @@ int TransactionContext::commit() {
     // TODO: add memory fence
     // release txn_id_ without lock is safe, because there is only one owner.
     record->set_transaction_id(INVALID_TRANSACTION_ID);
-    if (new_version) new_version->set_transaction_id(INVALID_READ_TIMESTAMP);
+    if (new_version) new_version->set_transaction_id(INVALID_TRANSACTION_ID);
   }
 
   // then reset status
@@ -293,16 +294,18 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
       } else if (version_iter->get_transaction_id() != INVALID_TRANSACTION_ID) {
         if (version_iter->get_transaction_id() < transaction_id_) {
           // A older transaction is holding the version
+          LOG_DEBUG("an older transaction[txn_id_:%lu] is owning the version",
+                    version_iter->get_transaction_id());
           version_iter->unlock_header();
           Record *possible_newer_version = version_iter->get_newer_version();
           if (possible_newer_version &&
               possible_newer_version->get_end_timestamp() == MIN_TIMESTAMP) {
             // the older transaction wants to delete this version
-            LOG_DEBUG("a older deleter is owning the version");
+            // LOG_DEBUG("an older deleter is owning the version");
             return FULGUR_FAIL;
           } else {
-            LOG_DEBUG("a older writer is owning the version");
-            // the younger transaction wants to update this version
+            // LOG_DEBUG("an older writer is owning the version");
+            //  the younger transaction wants to update this version
             return FULGUR_RETRY;
           }
         } else if (transaction_id_ < version_iter->get_transaction_id()) {
@@ -331,7 +334,8 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
   }
 
   // No valid version
-  LOG_DEBUG("older than all versions in the version chain");
+  LOG_DEBUG("Transaction:%lu: older than all versions in the version chain",
+            transaction_id_);
   return FULGUR_FAIL;
 }
 
@@ -374,18 +378,23 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
       update_last_read_ts_if_need(version_iter);
       version_iter->unlock_header();
       record = version_iter;
+      add_to_modify_set(record);
       return FULGUR_SUCCESS;
     }
     // latest version, but not free
   } else if (version_iter->get_transaction_id() != INVALID_TRANSACTION_ID) {
     if (version_iter->get_transaction_id() < transaction_id_) {
       LOG_DEBUG(
-          "latest version is owned by older transaction, cannot own, retry");
+          "Transaction[%lu]: latest version is owned by older "
+          "transaction[txn_id_:%lu], cannot own, retry",
+          transaction_id_, version_iter->get_transaction_id());
       version_iter->unlock_header();
       return FULGUR_RETRY;
     } else if (transaction_id_ < version_iter->get_transaction_id()) {
       LOG_DEBUG(
-          "latest version is owned by newer transaction, cannot own, fail");
+          "Transaction[%lu]: latest version is owned by newer "
+          "transaction[%lu], cannot own, fail",
+          transaction_id_, version_iter->get_transaction_id());
       version_iter->unlock_header();
       return FULGUR_FAIL;
     } else if (transaction_id_ == version_iter->get_transaction_id()) {
@@ -439,14 +448,19 @@ int TransactionContext::mvto_read_single_own(Record *record) {
         return FULGUR_INVISIBLE_VERSION;
       }
     } else if (record->get_transaction_id() < transaction_id_) {
-      LOG_DEBUG("this version is owned by older transaction, should retry");
+      LOG_DEBUG(
+          "Transaction[%lu]: this version is owned by older transaction[%lu], "
+          "should retry",
+          transaction_id_, record->get_transaction_id());
       record->unlock_header();
       return FULGUR_RETRY;
     } else if (transaction_id_ < record->get_transaction_id()) {
       if (record->get_begin_timestamp() <= transaction_id_) {
         LOG_DEBUG(
-            "a newer version have hold the ownership, assume it can commit, we "
-            "should abort");
+            "Transaction[%lu]: a newer version[%lu] have hold the ownership, "
+            "assume it can commit, we "
+            "should abort",
+            transaction_id_, record->get_transaction_id());
         record->unlock_header();
         return FULGUR_ABORT;
       } else {
@@ -461,6 +475,7 @@ int TransactionContext::mvto_read_single_own(Record *record) {
       if (record->get_end_timestamp() == MAX_TIMESTAMP) {
         record->set_transaction_id(transaction_id_);
         record->unlock_header();
+        add_to_modify_set(record);
         return FULGUR_SUCCESS;
       } else {
         LOG_DEBUG("can not own an old version");

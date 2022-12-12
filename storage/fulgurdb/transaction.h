@@ -70,6 +70,7 @@ class TransactionContext {
   uint64_t thread_id_ = 0;
   // bool read_only_ = false;
 
+  // TODO: rename to txn_own_set_;
   std::unordered_set<Record *> txn_modify_set_;
   /*
   std::unordered_set<Record *> txn_insert_set_;
