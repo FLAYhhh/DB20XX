@@ -31,6 +31,15 @@ int Table::insert_record_from_mysql(char *mysql_record,
   int status = FULGUR_SUCCESS;
   Record *record = nullptr;
 
+  // check primary key existance
+  if (indexes_.size() > 0) {
+    std::shared_ptr<Key> key =
+        indexes_[0]->build_key(mysql_record);
+    if (get_record_from_index(0, *key, record, *thd_ctx, false)) {
+      return FULGUR_KEY_EXIST;
+    }
+  }
+
   status = alloc_record(record, thd_ctx);
   if (status != FULGUR_SUCCESS) {
     LOG_DEBUG("alloc_record failed");
@@ -154,7 +163,7 @@ bool Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
   VersionChainHead *vchain_head = nullptr;
   bool found = indexes_[idx]->get(key, vchain_head, *thd_ctx.ti_);
   if (!found) {
-    LOG_DEBUG("do not find in index");
+    //LOG_DEBUG("do not find in index");
     return false;
   }
 
@@ -164,7 +173,7 @@ bool Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
   if (ret == FULGUR_SUCCESS)
     return true;
   else {
-    LOG_DEBUG("can not find a visible version");
+    //LOG_DEBUG("can not find a visible version");
     return false;
   }
 }

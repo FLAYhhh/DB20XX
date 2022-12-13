@@ -94,7 +94,7 @@ void Record::load_data_from_mysql(char *mysql_record, const Schema &schema) {
       *reinterpret_cast<char **>(fulgur_row_data) = actual_data;
 
       fulgur_row_data += 8;
-      mysql_record += actual_data_length;
+      mysql_record += field.mysql_pack_length_ - length_bytes;
     } else if (field.get_field_type() == BLOB_ID) {
       uint32_t length_bytes = field.get_mysql_length_bytes();
       // blob's length_bytes的取值可能是{1,2,3,4},见mysql官方文档
@@ -158,7 +158,7 @@ void Record::load_data_to_mysql(char *mysql_record, const Schema &schema) {
         memcpy(mysql_record, actual_data, actual_data_length);
 
         fulgur_row_data += 8;
-        mysql_record += actual_data_length;
+        mysql_record += field.mysql_pack_length_ - length_bytes;
       } else if (field.get_field_type() == BLOB_ID) {
         uint32_t length_bytes = field.get_mysql_length_bytes();
         // blob's length_bytes的取值可能是{1,2,3,4},见mysql官方文档

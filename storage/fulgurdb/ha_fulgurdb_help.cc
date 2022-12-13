@@ -1,4 +1,7 @@
 #include "./ha_fulgurdb_help.h"
+#include <sys/types.h>
+#include <cstdint>
+#include <iterator>
 #include "thread_context.h"
 
 static void schema_add_inline_field(fulgurdb::Schema &schema,
@@ -7,7 +10,7 @@ static void schema_add_inline_field(fulgurdb::Schema &schema,
                                     uint32_t data_bytes,
                                     uint32_t &offset_in_rec) {
   fulgurdb::Field se_field(type_id, field_name, data_bytes, offset_in_rec,
-                           fulgurdb::Field::STORE_INLINE);
+                           fulgurdb::Field::STORE_INLINE, data_bytes);
   offset_in_rec += data_bytes;
 
   schema.add_field(se_field);
@@ -17,10 +20,12 @@ static void schema_add_non_inline_field(fulgurdb::Schema &schema,
                                         fulgurdb::TYPE_ID type_id,
                                         const std::string &field_name,
                                         uint32_t length_bytes,
-                                        uint32_t &offset_in_rec) {
+                                        uint32_t &offset_in_rec,
+                                        uint32_t mysql_pack_length) {
   // non-inline方式存储的数据, field中的内容为(length_bytes + external data ptr)
   fulgurdb::Field se_field(type_id, field_name, length_bytes + sizeof(uint64_t),
-                           offset_in_rec, fulgurdb::Field::STORE_NON_INLINE);
+                           offset_in_rec, fulgurdb::Field::STORE_NON_INLINE,
+                           mysql_pack_length);
   se_field.set_mysql_length_bytes(length_bytes);
   offset_in_rec += length_bytes = sizeof(uint64_t);
 
@@ -73,7 +78,7 @@ void generate_fulgur_schema(TABLE *form, fulgurdb::Schema &schema) {
       case MYSQL_TYPE_VARCHAR:
         schema_add_non_inline_field(schema, fulgurdb::VARCHAR_ID, field_name,
                                     sl_fieldp->get_length_bytes(),
-                                    offset_in_rec);
+                                    offset_in_rec, data_bytes);
         break;
       case MYSQL_TYPE_DECIMAL:
       case MYSQL_TYPE_NEWDECIMAL:
@@ -104,7 +109,7 @@ void generate_fulgur_schema(TABLE *form, fulgurdb::Schema &schema) {
         // Field_blob's format: [length_bytes | ptr]
         schema_add_non_inline_field(schema, fulgurdb::BLOB_ID, field_name,
                                     sl_fieldp->pack_length() - sizeof(void *),
-                                    offset_in_rec);
+                                    offset_in_rec, data_bytes);
         break;
       case MYSQL_TYPE_DATETIME2:
       case MYSQL_TYPE_NEWDATE:

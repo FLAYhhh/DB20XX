@@ -256,7 +256,9 @@ int ha_fulgurdb::close(void) {
 int ha_fulgurdb::write_row(uchar *sl_record) {
   DBUG_TRACE;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
-  fulgur_table_->insert_record_from_mysql((char *)sl_record, thd_ctx);
+  int ret = fulgur_table_->insert_record_from_mysql((char *)sl_record, thd_ctx);
+  if (ret == fulgurdb::FULGUR_KEY_EXIST)
+    return HA_ERR_FOUND_DUPP_KEY;
 
   return 0;
 }
