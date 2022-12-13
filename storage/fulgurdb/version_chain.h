@@ -5,6 +5,7 @@
 
 namespace fulgurdb {
 class Record;
+class TableScanCursor;
 
 class VersionChainHead {
  public:
@@ -22,6 +23,7 @@ class VersionChainHeadBlock {
  public:
   int alloc_vchain_head(VersionChainHead *&vchain_head);
   bool is_last_vchain_head(VersionChainHead *vchain_head);
+  VersionChainHead *get_vchain_head(TableScanCursor *scan_cursor);
 
  public:
   static const uint32_t RECORD_PTR_CAPACITY = 1024;

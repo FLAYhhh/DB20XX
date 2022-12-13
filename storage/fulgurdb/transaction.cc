@@ -176,7 +176,7 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
     }
   }
 
-  if (ret == FULGUR_RETRY) ret = FULGUR_FAIL;
+  if (ret == FULGUR_RETRY) ret = FULGUR_ABORT;
   return ret;
 }
 
@@ -259,7 +259,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
         return FULGUR_SUCCESS;
       } else {
         LOG_DEBUG("a deleted version");
-        return FULGUR_FAIL;
+        return FULGUR_INVISIBLE_VERSION;
       }
     } else if (transaction_id_ < version_iter->get_begin_timestamp()) {
       if (version_iter == vchain_head.latest_record_)
@@ -281,7 +281,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
         version_iter->unlock_header();
       record = nullptr;
       LOG_DEBUG("meet a deleted version");
-      return FULGUR_FAIL;
+      return FULGUR_INVISIBLE_VERSION;
     } else {
       // if it's the latest version
       // Got a free latest version, we can always read it
@@ -302,7 +302,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
               possible_newer_version->get_end_timestamp() == MIN_TIMESTAMP) {
             // the older transaction wants to delete this version
             // LOG_DEBUG("an older deleter is owning the version");
-            return FULGUR_FAIL;
+            return FULGUR_ABORT;
           } else {
             // LOG_DEBUG("an older writer is owning the version");
             //  the younger transaction wants to update this version
@@ -336,7 +336,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
   // No valid version
   LOG_DEBUG("Transaction:%lu: older than all versions in the version chain",
             transaction_id_);
-  return FULGUR_FAIL;
+  return FULGUR_INVISIBLE_VERSION;
 }
 
 int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
@@ -350,12 +350,12 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
         "Latest version is not visible, transaction_id_:%lu, begin_ts_:%lu",
         transaction_id_, version_iter->get_begin_timestamp());
     version_iter->unlock_header();
-    return FULGUR_FAIL;
+    return FULGUR_ABORT;
   } else if (version_iter->get_end_timestamp() == MIN_TIMESTAMP) {
     // a deleted version
     LOG_DEBUG("Latest version is a delete version, cannot own");
     version_iter->unlock_header();
-    return FULGUR_FAIL;
+    return FULGUR_ABORT;
   } else if (version_iter->get_end_timestamp() < transaction_id_) {
     // not the latest version anymore
     LOG_DEBUG(
@@ -372,7 +372,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
           "transaction_id_:%lu, last_read_ts_:%lu",
           transaction_id_, version_iter->get_last_read_timestamp());
       version_iter->unlock_header();
-      return FULGUR_FAIL;
+      return FULGUR_ABORT;
     } else {
       version_iter->set_transaction_id(transaction_id_);
       update_last_read_ts_if_need(version_iter);
@@ -396,7 +396,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
           "transaction[%lu], cannot own, fail",
           transaction_id_, version_iter->get_transaction_id());
       version_iter->unlock_header();
-      return FULGUR_FAIL;
+      return FULGUR_ABORT;
     } else if (transaction_id_ == version_iter->get_transaction_id()) {
       version_iter->unlock_header();
       if (version_iter->get_newer_version() != nullptr) {
@@ -409,7 +409,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
   }
   // panic: should not reach here
   assert(false);
-  return FULGUR_FAIL;
+  return FULGUR_ABORT;
 }
 
 /**

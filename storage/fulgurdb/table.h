@@ -140,6 +140,7 @@ class Table {
   void add_record_block(RecordBlock *block);
   void add_vchain_head_block(VersionChainHeadBlock *block);
   RecordBlock *get_record_block(uint32_t block_id);
+  VersionChainHeadBlock *get_vchain_head_block(uint32_t block_id);
 
   /**
   @brief
@@ -166,11 +167,11 @@ class Table {
   std::array<RecordBlock *, PARALLEL_WRITER_NUM> record_allocators_;
 
   // table scan
-  RecordBlock *table_scan_cached_block_;
+  VersionChainHeadBlock *table_scan_cached_block_;
 
   // index
   std::vector<MasstreeIndex *> indexes_;
-  std::atomic<uint32_t> next_vchain_head_block_id = 0;
+  std::atomic<uint32_t> next_vchain_head_block_id_ = 0;
   CuckooMap<uint32_t, VersionChainHeadBlock *> vchain_head_blocks_;
   std::array<VersionChainHeadBlock *, PARALLEL_WRITER_NUM>
       vchain_head_allocators_;

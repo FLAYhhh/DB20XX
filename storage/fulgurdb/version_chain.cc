@@ -1,5 +1,6 @@
 #include "version_chain.h"
 #include "record.h"
+#include "table.h"
 
 namespace fulgurdb {
 char *VersionChainHead::get_latest_record_payload() {
@@ -26,4 +27,10 @@ bool VersionChainHeadBlock::is_last_vchain_head(VersionChainHead *vchain_head) {
   else
     return false;
 }
+
+VersionChainHead *VersionChainHeadBlock::get_vchain_head(TableScanCursor *scan_cursor) {
+  assert(scan_cursor->block_id_ == block_id_);
+  return &entries_[scan_cursor->idx_in_block_];
+}
+
 }  // namespace fulgurdb
