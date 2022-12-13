@@ -579,9 +579,6 @@ int basic_table<P>::scan_range_first(H helper,
                 goto done;
             }
             */
-            // 为后续遍历调整stack的状态
-            stack.ki_ = helper.next(stack.ki_);
-            stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
             goto done;
 
         case mystack_type::scan_find_next:
@@ -639,6 +636,9 @@ int basic_table<P>::scan_range_next(H helper,
 {
     typedef scanstackelt<P> mystack_type;
 
+            // 为后续遍历调整stack的状态
+    stack.ki_ = helper.next(stack.ki_);
+    stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
     while (1) {
         switch (stack.state_) {
         case mystack_type::scan_emit:
@@ -651,8 +651,8 @@ int basic_table<P>::scan_range_next(H helper,
             }
             */
             // 为后续遍历调整stack的状态
-            stack.ki_ = helper.next(stack.ki_);
-            stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
+            //stack.ki_ = helper.next(stack.ki_);
+            //stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
             goto done;
 
         case mystack_type::scan_find_next:

@@ -1,1 +1,1 @@
-gdb --args build/bin/mysqld --defaults-file=my.cnf --gdb
+lldb -- build/bin/mysqld --defaults-file=my.cnf --gdb
