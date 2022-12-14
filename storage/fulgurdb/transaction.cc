@@ -120,49 +120,6 @@ int TransactionContext::mvto_update(Record *old_record, char *new_mysql_record,
   }
 }
 
-/**
- *@brief
- *  mvto_read() and get_visibility() are used for table scan
- *  without index
- */
-int TransactionContext::mvto_read_single_version(Record *record,
-                                                 bool read_own) {
-  LOG_TRACE("transaction_id_:%lu, begin_ts_:%lu, end_ts_:%lu", transaction_id_,
-            record->get_begin_timestamp(), record->get_end_timestamp());
-  if (read_own) {
-    return mvto_read_single_own(record);
-  } else
-    return mvto_read_single_unown(record);
-}
-
-int TransactionContext::mvto_get_visibility(Record *record) {
-  uint64_t record_begin_ts = record->get_begin_timestamp();
-  uint64_t record_end_ts = record->get_end_timestamp();
-  uint64_t record_txn_id = record->get_transaction_id();
-  bool ownership = (transaction_id_ == record_txn_id);
-
-  bool committed_version = (transaction_id_ >= record_begin_ts);
-  bool invalidated_version = (transaction_id_ >= record_end_ts);
-
-  if (ownership == true) {
-    // condition: current transaction holds this record version
-    // sub-case1: this is a newly inserted/updated record version
-    if (record_begin_ts == MAX_TIMESTAMP && record_end_ts == MAX_TIMESTAMP) {
-      return RecordVersionVisibility::VISIBLE;
-    } else if (record_end_ts == INVALID_TIMESTAMP) {
-      return RecordVersionVisibility::DELETED;
-    } else {
-      return RecordVersionVisibility::INVISIBLE;
-    }
-  } else {
-    if (committed_version && !invalidated_version) {
-      return RecordVersionVisibility::VISIBLE;
-    } else {
-      return RecordVersionVisibility::INVISIBLE;
-    }
-  }
-}
-
 int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
                                                 bool read_own,
                                                 Record *&record) {
@@ -260,7 +217,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
         record = version_iter;
         return FULGUR_SUCCESS;
       } else {
-        LOG_DEBUG("a deleted version");
+        LOG_TRACE("a deleted version");
         return FULGUR_INVISIBLE_VERSION;
       }
     } else if (transaction_id_ < version_iter->get_begin_timestamp()) {
@@ -282,7 +239,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
       if (version_iter == vchain_head.latest_record_)
         version_iter->unlock_header();
       record = nullptr;
-      LOG_DEBUG("meet a deleted version");
+      LOG_TRACE("meet a deleted version");
       return FULGUR_INVISIBLE_VERSION;
     } else {
       // if it's the latest version
@@ -296,8 +253,8 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
       } else if (version_iter->get_transaction_id() != INVALID_TRANSACTION_ID) {
         if (version_iter->get_transaction_id() < transaction_id_) {
           // A older transaction is holding the version
-          LOG_DEBUG("an older transaction[txn_id_:%lu] is owning the version",
-                    version_iter->get_transaction_id());
+          LOG_DEBUG("Transaction[%lu]: an older transaction[txn_id_:%lu] is owning the version",
+                    transaction_id_, version_iter->get_transaction_id());
           version_iter->unlock_header();
           Record *possible_newer_version = version_iter->get_newer_version();
           if (possible_newer_version &&
@@ -362,8 +319,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
   } else if (version_iter->get_end_timestamp() < transaction_id_) {
     // not the latest version anymore
     LOG_DEBUG(
-        "not the latest version anymore, need retry. transaction_id_:%lu, "
-        "end_ts_:%lu",
+        "Transaction[%lu]:not the latest version anymore, need retry. end_ts_:%lu",
         transaction_id_, version_iter->get_end_timestamp());
     version_iter->unlock_header();
     return FULGUR_RETRY;
@@ -371,8 +327,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
     // still the latest version, and free
     if (transaction_id_ < version_iter->get_last_read_timestamp()) {
       LOG_ERROR(
-          "Latest version has been read by newer transaction, cannot own. "
-          "transaction_id_:%lu, last_read_ts_:%lu",
+          "Transaction[%lu]:Latest version has been read by newer transaction, cannot own. last_read_ts_:%lu",
           transaction_id_, version_iter->get_last_read_timestamp());
       version_iter->unlock_header();
       return FULGUR_ABORT;
@@ -416,187 +371,11 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
 }
 
 /**
- * @brief
- *   return values
- *     retval1 FULGUR_SUCCESS: visible and hold the ownership
- *     retval2 FULGUR_INVISIBLE_VERSION: invisible
- *     retval3 FULGUR_ABORT: visible but cannot hold the ownership
- *     retval4 FULGUR_RETRY: visible, still have chance to hold the ownership
- */
-int TransactionContext::mvto_read_single_own(Record *record) {
-  // visibility judge standards are different for owned and unowned versions
-
-  // visible situation 1: old version with proper [begin, end) timestamp
-  // read old version do not need to hold the lock
-  if (record->get_end_timestamp() != MAX_TIMESTAMP &&
-      record->get_begin_timestamp() <= transaction_id_ &&
-      transaction_id_ <= record->get_end_timestamp()) {
-    LOG_DEBUG("visible but can not hold ownership of an old version");
-    return FULGUR_ABORT;
-  }
-
-  // visible situation 2: latest version with proper [bengin, end) timestamp
-  //                      and proper txn_id_
-  // need to hold lock to modify last_read_ts_
-  record->lock_header();
-  // an owned version
-  if (record->get_transaction_id() != INVALID_TRANSACTION_ID) {
-    if (record->get_transaction_id() == transaction_id_) {
-      if (record->get_newer_version() == nullptr) {
-        record->unlock_header();
-        return FULGUR_SUCCESS;
-      } else {
-        LOG_DEBUG("meet a covered version");
-        record->unlock_header();
-        return FULGUR_INVISIBLE_VERSION;
-      }
-    } else if (record->get_transaction_id() < transaction_id_) {
-      LOG_DEBUG(
-          "Transaction[%lu]: this version is owned by older transaction[%lu], "
-          "should retry",
-          transaction_id_, record->get_transaction_id());
-      record->unlock_header();
-      return FULGUR_RETRY;
-    } else if (transaction_id_ < record->get_transaction_id()) {
-      if (record->get_begin_timestamp() <= transaction_id_) {
-        LOG_DEBUG(
-            "Transaction[%lu]: a newer version[%lu] have hold the ownership, "
-            "assume it can commit, we "
-            "should abort",
-            transaction_id_, record->get_transaction_id());
-        record->unlock_header();
-        return FULGUR_ABORT;
-      } else {
-        record->unlock_header();
-        return FULGUR_INVISIBLE_VERSION;
-      }
-    }
-  } else {
-    // a unowned version
-    if (record->get_begin_timestamp() <= transaction_id_ &&
-        transaction_id_ < record->get_end_timestamp()) {
-      if (record->get_end_timestamp() == MAX_TIMESTAMP) {
-        record->set_transaction_id(transaction_id_);
-        record->unlock_header();
-        add_to_modify_set(record);
-        return FULGUR_SUCCESS;
-      } else {
-        LOG_DEBUG("can not own an old version");
-        record->unlock_header();
-        return FULGUR_ABORT;
-      }
-    } else {
-      LOG_DEBUG("meet a invisible version");
-      record->unlock_header();
-      return FULGUR_INVISIBLE_VERSION;
-    }
-  }
-
-  assert(false);
-  return FULGUR_ABORT;
-}
-
-/**
- * @brief
- *   return values
- *     retval1 FULGUR_SUCCESS: visible
- *     retval2 FULGUR_INVISIBLE_VERSION: invisible
- *
- */
-int TransactionContext::mvto_read_single_unown(Record *record) {
-  // visibility judge standards are different for owned and unowned versions
-
-  // visible situation 1: old version with proper [begin, end) timestamp
-  // read old version do not need to hold the lock
-  if (record->get_end_timestamp() != MAX_TIMESTAMP &&
-      record->get_begin_timestamp() <= transaction_id_ &&
-      transaction_id_ <= record->get_end_timestamp()) {
-    return FULGUR_SUCCESS;
-  }
-
-  // visible situation 2: latest version with proper [bengin, end) timestamp
-  //                      and proper txn_id_
-  // need to hold lock to modify last_read_ts_
-  record->lock_header();
-  // an owned version
-  if (record->get_transaction_id() != INVALID_TRANSACTION_ID) {
-    if (record->get_transaction_id() == transaction_id_) {
-      if (record->get_newer_version() == nullptr) {
-        record->unlock_header();
-        return FULGUR_SUCCESS;
-      } else {
-        LOG_DEBUG("meet a covered version");
-        record->unlock_header();
-        return FULGUR_INVISIBLE_VERSION;
-      }
-    } else if (record->get_transaction_id() < transaction_id_) {
-      LOG_DEBUG(
-          "this version is owned by older transaction, should retry. older "
-          "transaction_id_:%lu, current_transaction_id_:%lu",
-          record->get_transaction_id(), transaction_id_);
-      record->unlock_header();
-      return FULGUR_RETRY;
-    } else if (transaction_id_ < record->get_transaction_id()) {
-      if (record->get_begin_timestamp() <= transaction_id_) {
-        update_last_read_ts_if_need(record);
-        record->unlock_header();
-        return FULGUR_SUCCESS;
-      } else {
-        record->unlock_header();
-        return FULGUR_INVISIBLE_VERSION;
-      }
-    }
-  } else {
-    // a unowned version
-    if (record->get_begin_timestamp() <= transaction_id_ &&
-        transaction_id_ < record->get_end_timestamp()) {
-      update_last_read_ts_if_need(record);
-      record->unlock_header();
-      return FULGUR_SUCCESS;
-    } else {
-      LOG_DEBUG("meet a invisible version");
-      record->unlock_header();
-      return FULGUR_INVISIBLE_VERSION;
-    }
-  }
-
-  // nerver reach here
-  assert(false);
-  return FULGUR_ABORT;
-}
-
-/**
  *@brief caller must hold the latch of record header
  */
 void TransactionContext::update_last_read_ts_if_need(Record *record) {
   if (record->get_last_read_timestamp() < transaction_id_)
     record->set_last_read_timestamp(transaction_id_);
-}
-
-/*
-void TransactionContext::add_to_insert_set(Record *record) {
-  txn_insert_set_.insert(record);
-}
-
-void TransactionContext::add_to_update_set(Record *record) {
-  txn_update_set_.insert(record);
-}
-
-void TransactionContext::add_to_delete_set(Record *record) {
-  txn_delete_set_.insert(record);
-}
-
-void TransactionContext::add_to_read_own_set(Record *record) {
-  txn_read_own_set_.insert(record);
-}
-
-void TransactionContext::add_to_ins_del_set(Record *record) {
-  txn_ins_del_set_.insert(record);
-}
-*/
-
-void TransactionContext::add_to_modify_set(Record *record) {
-  txn_modify_set_.insert(record);
 }
 
 void TransactionContext::reset() {
@@ -606,6 +385,10 @@ void TransactionContext::reset() {
   started_ = false;
   should_abort_ = false;
   txn_modify_set_.clear();
+}
+
+void TransactionContext::add_to_modify_set(Record *record) {
+  txn_modify_set_.insert(record);
 }
 
 }  // namespace fulgurdb
