@@ -310,7 +310,7 @@ bool Table::index_prefix_key_search(uint32_t idx, const Key &key,
     }
   } else {
     // FIXME: handle other return code correctly
-    LOG_DEBUG("read version chain fail");
+    LOG_DEBUG("read version chain fail, vchain_head: %p", vchain_head);
     return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx,
                                     read_own);
   }
@@ -355,8 +355,8 @@ bool Table::index_prefix_search_next(uint32_t idx, const Key &key,
     return false;
   } else {
     // FIXME: handle other return code correctly
-    LOG_DEBUG("read version chain fail");
-    return false;
+    LOG_DEBUG("read version chain fail, vchain_head:%p", vchain_head);
+    return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx, read_own);
   }
 }
 

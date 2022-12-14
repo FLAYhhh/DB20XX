@@ -1,6 +1,8 @@
 #include "transaction.h"
+#include <chrono>
 #include <cstdint>
 #include <exception>
+#include <thread>
 #include "data_types.h"
 #include "message_logger.h"
 #include "record.h"
@@ -166,8 +168,8 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
                                                 Record *&record) {
   int retry_time = 0;
   int ret = FULGUR_RETRY;
-  while (ret == FULGUR_RETRY && retry_time < 1) {
-    // TODO: sleep
+  while (ret == FULGUR_RETRY && retry_time < 5) {
+    std::this_thread::sleep_for(std::chrono::microseconds(5));
     retry_time++;
     if (read_own) {
       ret = mvto_read_vchain_own(vchain_head, record);
@@ -330,6 +332,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     }
 
     // panic: should not reach here
+    // FIXME: trigger one time
     assert(false);
   }
 
