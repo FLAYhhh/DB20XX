@@ -15,13 +15,15 @@ class Field {
   static const bool STORE_INLINE = true;
   static const bool STORE_NON_INLINE = false;
   Field(TYPE_ID type_id, std::string name, uint32_t data_bytes,
-        uint32_t off_in_record, bool store_inline, uint32_t mysql_pack_length)
+        uint32_t off_in_record, bool store_inline, uint32_t mysql_pack_length,
+        uint32_t off_in_mysql_record)
       : field_type_id_(type_id),
         field_name_(name),
         data_bytes_(data_bytes),
         off_in_record_(off_in_record),
         store_inline_(store_inline),
-        mysql_pack_length_(mysql_pack_length) {}
+        mysql_pack_length_(mysql_pack_length),
+        off_in_mysql_record_(off_in_mysql_record) {}
 
   bool store_inline() const { return store_inline_; }
 
@@ -66,11 +68,30 @@ class Field {
     }
   }
 
+  void get_mysql_field_data(const char *record, const char *&data, uint32_t &len) const {
+    if (store_inline_) {
+      data = record + off_in_mysql_record_;
+      len = data_bytes_;
+    } else {
+      const char *p = record + off_in_mysql_record_;
+      if (mysql_length_bytes_ == 1) {
+        len = *reinterpret_cast<const uint8_t *>(p);
+        p += 1;
+      } else if (mysql_length_bytes_ == 2) {
+        len = *reinterpret_cast<const uint16_t *>(p);
+        p += 2;
+      } else {
+        // TODO:panic
+      }
+      data = p;
+    }
+  }
+
  private:
   TYPE_ID field_type_id_ = TYPE_ID_UPBOUND;
   std::string field_name_ = "";
   uint32_t data_bytes_ = 0;     // 该field占用的inline字节数
-  uint32_t off_in_record_ = 0;  // 该field在record中的偏移量
+  uint32_t off_in_record_ = 0;  // 该field在fulgurdb record中的偏移
   bool store_inline_ = true;    // 该field是否采用inline方式存储
 
   // Field中需要额外存储一些MySQL server层中Field的元数据.
@@ -79,5 +100,6 @@ class Field {
   uint32_t mysql_length_bytes_ = 0;
   uint32_t mysql_pack_length_ =
       0;  // total bytes occupied by a field in mysql internal format
+  uint32_t off_in_mysql_record_ = 0;
 };
 }  // namespace fulgurdb

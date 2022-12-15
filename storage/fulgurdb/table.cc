@@ -38,7 +38,7 @@ int Table::insert_record_from_mysql(char *mysql_record,
   // check primary key existance
   if (indexes_.size() > 0) {
     Key key;
-    indexes_[0]->build_key(mysql_record, key);
+    indexes_[0]->build_key_from_mysql_record(mysql_record, key);
     int ret = get_record_from_index(0, key, record, *thd_ctx, false);
     indexes_[0]->release_key(key);
 

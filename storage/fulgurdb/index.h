@@ -126,6 +126,22 @@ class Index {
     output_key.len = keyinfo_.key_len;
   }
 
+  void build_key_from_mysql_record(const char *mysql_record, Key &output_key) {
+    char *key_data = (char *)malloc(sizeof(keyinfo_.key_len));
+    char *key_cursor = key_data;
+    for (auto i: keyinfo_.key_parts) {
+      const Field &field = keyinfo_.schema.get_field(i);
+      const char *field_data = nullptr;
+      uint32_t data_len = 0;
+
+      field.get_mysql_field_data(mysql_record, field_data, data_len);
+      memcpy(key_cursor, field_data, data_len);
+      key_cursor += data_len;
+    }
+    output_key.s = key_data;
+    output_key.len = keyinfo_.key_len;
+  }
+
   void release_key(Key &key) {
     free(const_cast<char *>(key.s));
   }
