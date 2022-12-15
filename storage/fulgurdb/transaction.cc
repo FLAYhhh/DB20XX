@@ -22,35 +22,43 @@ void TransactionContext::begin_transaction(uint64_t thread_id) {
   started_ = true;
 }
 
-void TransactionContext::mvto_insert(Record *record, Table *table,
+void TransactionContext::mvto_insert(Record *record, VersionChainHead *vchain_head, Table *table,
                                      ThreadContext *thd_ctx) {
   // Alloc version chain head & insert it to index
   uint32_t writer_idx = thd_ctx->get_thread_id() % Table::PARALLEL_WRITER_NUM;
   threadinfo *ti = thd_ctx->get_threadinfo();
   VersionChainHeadBlock *vchain_head_block = nullptr;
-  VersionChainHead *vchain_head = nullptr;  // pointer to RecordPtr
   int status = FULGUR_SUCCESS;
-  do {
-    vchain_head_block = table->vchain_head_allocators_[writer_idx];
-    status = vchain_head_block->alloc_vchain_head(vchain_head);
-  } while (status != FULGUR_SUCCESS);
 
-  if (vchain_head_block->is_last_vchain_head(vchain_head)) {
-    table->vchain_head_allocators_[writer_idx] =
-        table->alloc_vchain_head_block();
+  if (vchain_head == nullptr) {
+    do {
+      vchain_head_block = table->vchain_head_allocators_[writer_idx];
+      status = vchain_head_block->alloc_vchain_head(vchain_head);
+    } while (status != FULGUR_SUCCESS);
+
+    if (vchain_head_block->is_last_vchain_head(vchain_head)) {
+      table->vchain_head_allocators_[writer_idx] =
+          table->alloc_vchain_head_block();
+    }
+
+    vchain_head->set_latest_record(record);
+    record->set_vchain_head(vchain_head);
+    record->set_transaction_id(transaction_id_);
+    record->set_last_read_timestamp(transaction_id_);
+    // add_to_insert_set(record);
+    add_to_modify_set(record);
+
+    // We need to insert uncommited record to index,
+    // so that subsequent queries in the same transaction
+    // can find it from index
+    table->insert_record_to_index(vchain_head, *ti);
+  } else {
+    Record *deleted_version = vchain_head->latest_record_;
+    deleted_version->set_newer_version(record);
+    record->set_older_version(deleted_version);
+    record->set_transaction_id(transaction_id_);
+    record->set_vchain_head(vchain_head);
   }
-
-  vchain_head->set_latest_record(record);
-  record->set_vchain_head(vchain_head);
-  record->set_transaction_id(transaction_id_);
-  record->set_last_read_timestamp(transaction_id_);
-  // add_to_insert_set(record);
-  add_to_modify_set(record);
-
-  // We need to insert uncommited record to index,
-  // so that subsequent queries in the same transaction
-  // can find it from index
-  table->insert_record_to_index(vchain_head, *ti);
 }
 
 // similar to mvto_update
@@ -125,14 +133,19 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
                                                 Record *&record) {
   int retry_time = 0;
   int ret = FULGUR_RETRY;
-  while (ret == FULGUR_RETRY && retry_time < 5) {
-    std::this_thread::sleep_for(std::chrono::microseconds(5));
-    retry_time++;
+  while (ret == FULGUR_RETRY && retry_time < 20) {
+    if (retry_time != 0)
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
     if (read_own) {
       ret = mvto_read_vchain_own(vchain_head, record);
     } else {
       ret = mvto_read_vchain_unown(vchain_head, record);
     }
+    retry_time++;
+  }
+
+  if (retry_time == 20) {
+    LOG_ERROR("Transaction:%lu, retry 20 times but still failed\n", transaction_id_);
   }
 
   if (ret == FULGUR_RETRY) ret = FULGUR_ABORT;
@@ -150,10 +163,11 @@ int TransactionContext::commit() {
   // TODO: Log Module should persist modify set at this time
   // Because once we set begin_ts_, the record is visible to other transaction
   for (auto record : txn_modify_set_) {
-    // Update & delete operation
+    // Update & delete & insert(on exist vchain) operation
     Record *new_version = record->get_newer_version();
     if (new_version != nullptr) {
-      record->set_end_timestamp(transaction_id_);
+      if (record->get_end_timestamp() != MIN_TIMESTAMP)
+        record->set_end_timestamp(transaction_id_);
       VersionChainHead *vchain_head = record->get_vchain_head();
       vchain_head->set_latest_record(new_version);
       // FIXME:BUG, assertion failed
@@ -161,7 +175,7 @@ int TransactionContext::commit() {
              MAX_TIMESTAMP);  // assert it's an uncommitted version
       new_version->set_begin_timestamp(transaction_id_);
     }
-    // Insert operation
+    // Insert(create vchain) operation
     if (record->get_begin_timestamp() == MAX_TIMESTAMP)
       record->set_begin_timestamp(transaction_id_);
 
@@ -188,7 +202,9 @@ void TransactionContext::abort() {
       record->set_newer_version(nullptr);
     }
 
+    // insert(create new vchain)
     if (record->get_begin_timestamp() == MAX_TIMESTAMP) {
+      record->set_begin_timestamp(MIN_TIMESTAMP);
       record->set_end_timestamp(MIN_TIMESTAMP);
     }
 
@@ -213,12 +229,12 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     // version_iter->begin_ts_ <= transaction_id_
     if (transaction_id_ == version_iter->get_transaction_id()) {
       version_iter->unlock_header();
+      record = version_iter;
       if (version_iter->get_end_timestamp() != MIN_TIMESTAMP) {
-        record = version_iter;
         return FULGUR_SUCCESS;
       } else {
-        LOG_TRACE("a deleted version");
-        return FULGUR_INVISIBLE_VERSION;
+        LOG_TRACE("Transaction[%lu]: a deleted version", transaction_id_);
+        return FULGUR_DELETED_VERSION;
       }
     } else if (transaction_id_ < version_iter->get_begin_timestamp()) {
       if (version_iter == vchain_head.latest_record_)
@@ -230,24 +246,22 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     // At this point, we've got the first version that
     // satisfy version_iter->begin_ts_ <= transaction_id_
 
+    record = version_iter;
     // if it's a stable old visible version
     if (version_iter->get_end_timestamp() != MAX_TIMESTAMP &&
         transaction_id_ <= version_iter->get_end_timestamp()) {
-      record = version_iter;
       return FULGUR_SUCCESS;
     } else if (version_iter->get_end_timestamp() == MIN_TIMESTAMP) {
       if (version_iter == vchain_head.latest_record_)
         version_iter->unlock_header();
-      record = nullptr;
-      LOG_TRACE("meet a deleted version");
-      return FULGUR_INVISIBLE_VERSION;
+      LOG_TRACE("Transaction[%lu]: meet a deleted version", transaction_id_);
+      return FULGUR_DELETED_VERSION;
     } else {
       // if it's the latest version
       // Got a free latest version, we can always read it
       if (version_iter->get_transaction_id() == INVALID_TRANSACTION_ID) {
         update_last_read_ts_if_need(version_iter);
         version_iter->unlock_header();
-        record = version_iter;
         return FULGUR_SUCCESS;
         // A temporary latest version, but not stable
       } else if (version_iter->get_transaction_id() != INVALID_TRANSACTION_ID) {
@@ -271,17 +285,15 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
           // An older transaction is holding the version
           update_last_read_ts_if_need(version_iter);
           version_iter->unlock_header();
-          record = version_iter;
           return FULGUR_SUCCESS;
-        } else if (transaction_id_ == version_iter->get_transaction_id()) {
+        } else {
+          assert(transaction_id_ == version_iter->get_transaction_id());
           // Always read from version list head;
           // and always put the updated version ahead of the version chain;
           // so that we can always get the updated version.
           version_iter->unlock_header();
           if (version_iter->get_newer_version() != nullptr) {
             record = version_iter->get_newer_version();
-          } else {
-            record = version_iter;
           }
           return FULGUR_SUCCESS;
         }
@@ -289,7 +301,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     }
 
     // panic: should not reach here
-    // FIXME: trigger one time
+    // FIXME: trigger twice
     assert(false);
   }
 

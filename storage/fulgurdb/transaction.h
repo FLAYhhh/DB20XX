@@ -17,11 +17,12 @@ class Table;
 class ThreadContext;
 
 class TransactionContext {
+  friend class Table;
  public:
   bool on_going();
   void begin_transaction(uint64_t thread_id);
 
-  void mvto_insert(Record *record, Table *table, ThreadContext *thd_ctx);
+  void mvto_insert(Record *record, VersionChainHead *vchain_head, Table *table, ThreadContext *thd_ctx);
   int mvto_update(Record *old_record, char *new_mysql_record, Table *table,
                   ThreadContext *thd_ctx);
   int mvto_delete(Record *record, Table *table, ThreadContext *thd_ctx);

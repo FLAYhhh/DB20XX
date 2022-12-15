@@ -16,6 +16,7 @@ constexpr uint32_t FULGUR_MAX_KEY_PARTS = 255;
 constexpr uint32_t FULGUR_MAX_KEY_LENGTH = 255;
 using namespace Masstree;
 
+#if 0
 struct Key {
   Key(char *s, uint32_t l, bool own = true) : data(s), len(l), own_mem(own) {}
   Key() {}
@@ -66,6 +67,8 @@ struct Key {
   uint32_t len = 0;
   bool own_mem = true;
 };
+#endif
+typedef Str Key;
 
 struct KeyInfo {
   /**
@@ -102,10 +105,11 @@ class Index {
   /**
   @brief
     build key from a fulgurdb record
+    have memory allocation in this function, need to free by others
   @args
     arg1 record: record payload, without record header
   */
-  std::shared_ptr<Key> build_key(const char *record) {
+  void build_key(const char *record, Key &output_key) {
     char *key_data = (char *)malloc(sizeof(keyinfo_.key_len));
     char *key_cursor = key_data;
     for (auto i : keyinfo_.key_parts) {
@@ -118,7 +122,12 @@ class Index {
       key_cursor += data_len;
     }
 
-    return std::shared_ptr<Key>(new Key(key_data, keyinfo_.key_len));
+    output_key.s = key_data;
+    output_key.len = keyinfo_.key_len;
+  }
+
+  void release_key(Key &key) {
+    free(const_cast<char *>(key.s));
   }
 
   uint32_t get_key_length() { return keyinfo_.get_key_length(); }
@@ -171,8 +180,7 @@ class MasstreeIndex : public Index {
   */
   bool put(const Key &key, VersionChainHead *vchain_head,
            threadinfo &ti) override {
-    typename fulgur_masstree_type::cursor_type lp(masstree_,
-                                                  Str(key.data, key.len));
+    typename fulgur_masstree_type::cursor_type lp(masstree_, key);
     bool found = lp.find_insert(ti);
     if (!found) {
       ti.observe_phantoms(lp.node());
@@ -193,8 +201,7 @@ class MasstreeIndex : public Index {
   */
   bool get(const Key &key, VersionChainHead *&vchain_head,
            threadinfo &ti) const override {
-    typename fulgur_masstree_type::unlocked_cursor_type lp(
-        masstree_, Str(key.data, key.len));
+    typename fulgur_masstree_type::unlocked_cursor_type lp(masstree_, key);
     bool found = lp.find_unlocked(ti);
     if (found) vchain_head = lp.value();
 
@@ -204,8 +211,7 @@ class MasstreeIndex : public Index {
   bool scan_range_first(const Key &key, VersionChainHead *&vchain_head,
                         bool emit_firstkey, scan_stack_type &stack,
                         threadinfo &ti) const {
-    masstree_.scan_range_first(Str(key.data, key.len), emit_firstkey, stack,
-                               ti);
+    masstree_.scan_range_first(key, emit_firstkey, stack, ti);
     if (stack.no_value()) {
       return false;
     } else {
@@ -228,8 +234,7 @@ class MasstreeIndex : public Index {
   bool rscan_range_first(const Key &key, VersionChainHead *&vchain_head,
                          bool emit_firstkey, scan_stack_type &stack,
                          threadinfo &ti) const {
-    masstree_.rscan_range_first(Str(key.data, key.len), emit_firstkey, stack,
-                                ti);
+    masstree_.rscan_range_first(key, emit_firstkey, stack, ti);
     if (stack.no_value()) {
       return false;
     } else {

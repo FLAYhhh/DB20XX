@@ -1,6 +1,8 @@
 #include "table.h"
+#include <cassert>
 #include <cstdint>
 #include <memory>
+#include "data_types.h"
 #include "index.h"
 #include "message_logger.h"
 #include "return_status.h"
@@ -30,12 +32,34 @@ int Table::insert_record_from_mysql(char *mysql_record,
                                     ThreadContext *thd_ctx) {
   int status = FULGUR_SUCCESS;
   Record *record = nullptr;
+  TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+  VersionChainHead *vchain_head = nullptr;
 
   // check primary key existance
   if (indexes_.size() > 0) {
-    std::shared_ptr<Key> key =
-        indexes_[0]->build_key(mysql_record);
-    if (get_record_from_index(0, *key, record, *thd_ctx, false)) {
+    Key key;
+    indexes_[0]->build_key(mysql_record, key);
+    int ret = get_record_from_index(0, key, record, *thd_ctx, false);
+    indexes_[0]->release_key(key);
+
+    if (ret == FULGUR_KEY_NOT_EXIST) {
+      // do nothing, pass checking
+    } else if (ret == FULGUR_DELETED_VERSION) {
+      // The only condition that we can do insertion on an exist version chain
+      // Insert a new version after a newest deleted version
+      record->lock_header();
+      if (record->get_transaction_id() == INVALID_TRANSACTION_ID &&
+          record->get_newer_version() == nullptr) {
+        record->set_transaction_id(txn_ctx->transaction_id_);
+        vchain_head = record->get_vchain_head();
+        txn_ctx->add_to_modify_set(record);
+        record->unlock_header();
+      } else {
+        record->unlock_header();
+        txn_ctx->set_abort();
+        return FULGUR_ABORT;
+      }
+    } else {
       return FULGUR_KEY_EXIST;
     }
   }
@@ -47,10 +71,7 @@ int Table::insert_record_from_mysql(char *mysql_record,
   }
 
   record->load_data_from_mysql(mysql_record, schema_);
-
-  // Transaction module: set record header & add new record to rw set
-  TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
-  txn_ctx->mvto_insert(record, this, thd_ctx);
+  txn_ctx->mvto_insert(record, vchain_head, this, thd_ctx);
 
   return status;
 }
@@ -58,13 +79,19 @@ int Table::insert_record_from_mysql(char *mysql_record,
 int Table::update_record_from_mysql(Record *old_record, char *new_mysql_record,
                                     ThreadContext *thd_ctx) {
   TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
-  return txn_ctx->mvto_update(old_record, new_mysql_record, this, thd_ctx);
+  int ret = txn_ctx->mvto_update(old_record, new_mysql_record, this, thd_ctx);
+  assert(ret == FULGUR_SUCCESS);
+
+  return ret;
 }
 
 //=====================Delete operation==============================
 int Table::delete_record(Record *record, ThreadContext *thd_ctx) {
   TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
-  return txn_ctx->mvto_delete(record, this, thd_ctx);
+  int ret = txn_ctx->mvto_delete(record, this, thd_ctx);
+  assert(ret == FULGUR_SUCCESS);
+
+  return ret;
 }
 
 //=====================Table scan=====================================
@@ -113,6 +140,10 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
     txn_ctx->set_abort();
   }
 
+  if (ret == FULGUR_INVISIBLE_VERSION || ret == FULGUR_DELETED_VERSION) {
+    LOG_TRACE("Table:%s, invisible version", table_name_.c_str());
+  }
+
   // SUCCESS or INVISIBLE don't need to abort
   return ret;
 }
@@ -139,9 +170,10 @@ void Table::build_index(const KeyInfo &keyinfo, threadinfo &ti) {
 */
 void Table::insert_record_to_index(uint32_t idx, VersionChainHead *vchain_head,
                                    threadinfo &ti) {
-  std::shared_ptr<Key> key =
-      indexes_[idx]->build_key(vchain_head->get_latest_record_payload());
-  indexes_[idx]->put(*key, vchain_head, ti);
+  Key key;
+  indexes_[idx]->build_key(vchain_head->get_latest_record_payload(), key);
+  indexes_[idx]->put(key, vchain_head, ti);
+  indexes_[idx]->release_key(key);
 }
 
 void Table::insert_record_to_index(VersionChainHead *vchain_head,
@@ -158,27 +190,26 @@ void Table::insert_record_to_index(VersionChainHead *vchain_head,
   @retval true: key exists
   @retval false: key does not exist
 */
-bool Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
+int Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
                                   ThreadContext &thd_ctx, bool read_own) {
   VersionChainHead *vchain_head = nullptr;
   bool found = indexes_[idx]->get(key, vchain_head, *thd_ctx.ti_);
   if (!found) {
     //LOG_DEBUG("do not find in index");
-    return false;
+    return FULGUR_KEY_NOT_EXIST;
   }
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
-  if (ret == FULGUR_SUCCESS)
-    return true;
-  else {
-    //LOG_DEBUG("can not find a visible version");
-    return false;
+  if (ret == FULGUR_ABORT) {
+    txn_ctx->set_abort();
   }
+
+  return ret;
 }
 
-bool Table::index_scan_range_first(uint32_t idx, const Key &key,
+int Table::index_scan_range_first(uint32_t idx, const Key &key,
                                    Record *&record, bool emit_firstkey,
                                    scan_stack_type &scan_stack,
                                    ThreadContext &thd_ctx,
@@ -188,47 +219,54 @@ bool Table::index_scan_range_first(uint32_t idx, const Key &key,
 
   bool found = indexes_[idx]->scan_range_first(key, vchain_head, emit_firstkey,
                                                scan_stack, *thd_ctx.ti_);
-  if (!found) return false;
+  if (!found) return FULGUR_KEY_NOT_EXIST;
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  if (ret == FULGUR_ABORT) {
+    txn_ctx->set_abort();
+    return ret;
+  }
+
   if (ret == FULGUR_SUCCESS) {
     return true;
   } else if (emit_firstkey) {
     return false;
-  } else if (!emit_firstkey) {
+  } else {
     return index_scan_range_next(idx, record, scan_stack, thd_ctx, read_own);
   }
-
-  return false;
 }
 
-bool Table::index_scan_range_next(uint32_t idx, Record *&record,
+int Table::index_scan_range_next(uint32_t idx, Record *&record,
                                   scan_stack_type &scan_stack,
                                   ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   bool found =
       indexes_[idx]->scan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
-  if (!found) return false;
+  if (!found) return FULGUR_INDEX_RANGE_END;
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  if (ret == FULGUR_ABORT) {
+    txn_ctx->set_abort();
+    return ret;
+  }
   if (ret == FULGUR_SUCCESS) {
-    return true;
+    return ret;
   }
 
-  else if (ret == FULGUR_FAIL)
+  else if (ret == FULGUR_DELETED_VERSION || ret == FULGUR_INVISIBLE_VERSION)
     return index_scan_range_next(idx, record, scan_stack, thd_ctx, read_own);
   else {
     // panic
     assert(false);
-    return false;
+    return ret;
   }
 }
 
-bool Table::index_rscan_range_first(uint32_t idx, const Key &key,
+int Table::index_rscan_range_first(uint32_t idx, const Key &key,
                                     Record *&record, bool emit_firstkey,
                                     scan_stack_type &scan_stack,
                                     ThreadContext &thd_ctx,
@@ -238,48 +276,57 @@ bool Table::index_rscan_range_first(uint32_t idx, const Key &key,
 
   bool found = indexes_[idx]->rscan_range_first(key, vchain_head, emit_firstkey,
                                                 scan_stack, *thd_ctx.ti_);
-  if (!found) return false;
+  if (!found) return FULGUR_KEY_NOT_EXIST;
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
-  if (ret == FULGUR_SUCCESS) {
-    return true;
-  } else if (emit_firstkey) {
-    return false;
-  } else if (!emit_firstkey) {
-    return index_scan_range_next(idx, record, scan_stack, thd_ctx, read_own);
+  if (ret == FULGUR_ABORT) {
+    txn_ctx->set_abort();
+    return ret;
   }
 
-  return false;
+  if (ret == FULGUR_SUCCESS) {
+    return ret;
+  } else if (emit_firstkey) {
+    return ret;
+  } else {
+    assert(emit_firstkey == false);
+    return index_scan_range_next(idx, record, scan_stack, thd_ctx, read_own);
+  }
 }
 
-bool Table::index_rscan_range_next(uint32_t idx, Record *&record,
+int Table::index_rscan_range_next(uint32_t idx, Record *&record,
                                    scan_stack_type &scan_stack,
                                    ThreadContext &thd_ctx,
                                    bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   bool found =
       indexes_[idx]->rscan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
-  if (!found) return false;
+  if (!found) return FULGUR_INDEX_RANGE_END;
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
-  if (ret == FULGUR_SUCCESS) {
-    return true;
+  if (ret == FULGUR_ABORT) {
+    txn_ctx->set_abort();
+    return ret;
   }
 
-  else if (ret == FULGUR_FAIL)
+  if (ret == FULGUR_SUCCESS) {
+    return ret;
+  }
+
+  else if (ret == FULGUR_DELETED_VERSION || ret == FULGUR_INVISIBLE_VERSION)
     return index_scan_range_next(idx, record, scan_stack, thd_ctx, read_own);
   else {
     // panic
     assert(false);
-    return false;
+    return ret;
   }
 }
 
-bool Table::index_prefix_key_search(uint32_t idx, const Key &key,
+int Table::index_prefix_key_search(uint32_t idx, const Key &key,
                                     Record *&record,
                                     scan_stack_type &scan_stack,
                                     ThreadContext &thd_ctx,
@@ -291,35 +338,37 @@ bool Table::index_prefix_key_search(uint32_t idx, const Key &key,
   bool found = indexes_[idx]->scan_range_first(key, vchain_head, true,
                                                scan_stack, *thd_ctx.ti_);
 
-  if (!found) return false;
+  if (!found) return FULGUR_KEY_NOT_EXIST;
+
+  Key current_key = scan_stack.get_current_key().full_string();
+  if (current_key.less_than(key)) {
+    return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx, read_own);
+  } else if (!current_key.has_prefix(key)) {
+    return FULGUR_KEY_NOT_EXIST;
+  }
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
+  if (ret == FULGUR_ABORT) {
+    txn_ctx->set_abort();
+    return FULGUR_ABORT;
+  }
 
   if (ret == FULGUR_SUCCESS) {
-    std::shared_ptr<Key> record_key =
-        indexes_[idx]->build_key(record->get_payload());
-    if (Key::prefix_match(key, *record_key)) {
-      return true;
-    } else if (*record_key < key) {
-      return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx,
-                                      read_own);
-    } else if (*record_key > key) {
-      return false;
-    }
-  } else {
-    // FIXME: handle other return code correctly
-    LOG_DEBUG("read version chain fail, vchain_head: %p", vchain_head);
+    return FULGUR_SUCCESS;
+  } else if (ret == FULGUR_INVISIBLE_VERSION || ret == FULGUR_DELETED_VERSION) {
     return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx,
                                     read_own);
+  } else {
+    assert(false);
   }
 
   assert(false);
-  return false;
+  return FULGUR_ABORT;
 }
 
-bool Table::index_prefix_search_next(uint32_t idx, const Key &key,
+int Table::index_prefix_search_next(uint32_t idx, const Key &key,
                                      Record *&record,
                                      scan_stack_type &scan_stack,
                                      ThreadContext &thd_ctx,
@@ -330,33 +379,26 @@ bool Table::index_prefix_search_next(uint32_t idx, const Key &key,
   bool found =
       indexes_[idx]->scan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
 
-  if (!found) return false;
+  if (!found) return FULGUR_INDEX_RANGE_END;
+
+  Key current_key = scan_stack.get_current_key().full_string();
+  if (!current_key.has_prefix(key)) {
+    return FULGUR_INDEX_RANGE_END;
+  }
 
   // Traverse the version chain to find a valid version
   TransactionContext *txn_ctx = thd_ctx.get_transaction_context();
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own, record);
-
-  if (ret == FULGUR_SUCCESS) {
-    std::shared_ptr<Key> record_key =
-        indexes_[idx]->build_key(record->get_payload());
-    if (Key::prefix_match(key, *record_key)) {
-      return true;
-    } else if (*record_key < key) {
-      // lowbound has find in index_prefix_key_search()
-      // index_prefix_search_next() can not locate to a smaller key
-      assert(false);
-      return false;
-    } else if (*record_key > key) {
-      // LOG_DEBUG("prefix search should stop");
-      return false;
-    }
-
-    assert(false);
-    return false;
-  } else {
-    // FIXME: handle other return code correctly
-    LOG_DEBUG("read version chain fail, vchain_head:%p", vchain_head);
+  if (ret == FULGUR_ABORT) {
+    txn_ctx->set_abort();
+    return ret;
+  } else if (ret == FULGUR_SUCCESS) {
+    return ret;
+  } else if (ret == FULGUR_INVISIBLE_VERSION || ret == FULGUR_DELETED_VERSION) {
+    LOG_DEBUG("Transaction[%lu], read version chain fail, vchain_head:%p", txn_ctx->transaction_id_, vchain_head);
     return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx, read_own);
+  } else {
+    assert(false);
   }
 }
 

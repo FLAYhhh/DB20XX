@@ -139,6 +139,26 @@ struct Str : public String_base<Str> {
         va_end(val);
         return Str(buf, n);
     }
+
+    bool has_prefix(const Str &other) {
+      assert(other.len <= len);
+      if (memcmp(s, other.s, other.len) == 0)
+        return true;
+      else
+        return false;
+    }
+
+    /**
+     * @brief
+     *  only for prefix less than check
+     */
+    bool less_than(const Str &other) {
+      assert(other.len <= len);
+      if (memcmp(s, other.s, other.len) < 0)
+        return true;
+      else
+        return false;
+    }
 };
 
 struct inline_string : public String_base<inline_string> {

@@ -81,15 +81,11 @@ class Table {
   /**
   @brief
     given a index number and its corresponding key, get the record.
-
-  @return values
-    @retval true: key exists
-    @retval false: key does not exist
   */
-  bool get_record_from_index(uint32_t idx, const Key &key, Record *&record,
+  int get_record_from_index(uint32_t idx, const Key &key, Record *&record,
                              ThreadContext &thd_ctx, bool read_own);
 
-  bool index_scan_range_first(uint32_t idx, const Key &key, Record *&record,
+  int index_scan_range_first(uint32_t idx, const Key &key, Record *&record,
                               bool emit_firstkey, scan_stack_type &scan_stack,
                               ThreadContext &thd_ctx, bool read_own) const;
 
@@ -98,15 +94,15 @@ class Table {
    *  @retval true: Not the end
    *  @retval false: End of index
    */
-  bool index_scan_range_next(uint32_t idx, Record *&record,
+  int index_scan_range_next(uint32_t idx, Record *&record,
                              scan_stack_type &scan_stack,
                              ThreadContext &thd_ctx, bool read_own) const;
 
-  bool index_rscan_range_first(uint32_t idx, const Key &key, Record *&record,
+  int index_rscan_range_first(uint32_t idx, const Key &key, Record *&record,
                                bool emit_firstkey, scan_stack_type &scan_stack,
                                ThreadContext &thd_ctx, bool read_own) const;
 
-  bool index_rscan_range_next(uint32_t idx, Record *&record,
+  int index_rscan_range_next(uint32_t idx, Record *&record,
                               scan_stack_type &scan_stack,
                               ThreadContext &thd_ctx, bool read_own) const;
 
@@ -114,11 +110,11 @@ class Table {
     return indexes_[idx]->get_key_length();
   }
 
-  bool index_prefix_key_search(uint32_t idx, const Key &key, Record *&record,
+  int index_prefix_key_search(uint32_t idx, const Key &key, Record *&record,
                                scan_stack_type &scan_stack,
                                ThreadContext &thd_ctx, bool read_own) const;
 
-  bool index_prefix_search_next(uint32_t idx, const Key &key, Record *&record,
+  int index_prefix_search_next(uint32_t idx, const Key &key, Record *&record,
                                 scan_stack_type &scan_stack,
                                 ThreadContext &thd_ctx, bool read_own) const;
 

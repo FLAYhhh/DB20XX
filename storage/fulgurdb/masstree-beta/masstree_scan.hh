@@ -79,6 +79,10 @@ class scanstackelt {
       scan_count_ = 0;
     }
 
+    key_type &get_current_key() {
+      return ka_;
+    }
+
 private:
     // 定义这个union是为了让keybuf是sizeof(ikey_type)的整数倍
     union KeyBuf{

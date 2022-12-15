@@ -259,6 +259,8 @@ int ha_fulgurdb::write_row(uchar *sl_record) {
   int ret = fulgur_table_->insert_record_from_mysql((char *)sl_record, thd_ctx);
   if (ret == fulgurdb::FULGUR_KEY_EXIST)
     return HA_ERR_FOUND_DUPP_KEY;
+  else if (ret == fulgurdb::FULGUR_ABORT)
+    return HA_ERR_GENERIC;
 
   return 0;
 }
@@ -320,12 +322,11 @@ int ha_fulgurdb::delete_row(const uchar *) {
 
 int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
                             enum ha_rkey_function find_flag) {
-  index_key_.set(reinterpret_cast<char *>(const_cast<uchar *>(key)), key_len,
-                 false);
+  index_key_.assign((const char *)key, key_len);
 
   fulgurdb::Record *record = nullptr;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
-  bool found = false;
+  int found = fulgurdb::FULGUR_SUCCESS;
 
   // flag的定义见include/my_base.h
   scan_direction_ = find_flag;
@@ -359,7 +360,7 @@ int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
     assert(false);
   }
 
-  if (found) {
+  if (found == fulgurdb::FULGUR_SUCCESS) {
     record->load_data_to_mysql((char *)mysql_record,
                                fulgur_table_->get_schema());
     current_record_ = record;
@@ -376,7 +377,7 @@ int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
 int ha_fulgurdb::index_next(uchar *mysql_record) {
   fulgurdb::Record *record;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
-  bool found = false;
+  int found = false;
 
   switch (scan_direction_) {
     case HA_READ_KEY_OR_NEXT:
@@ -402,7 +403,7 @@ int ha_fulgurdb::index_next(uchar *mysql_record) {
       break;
   }
 
-  if (found) {
+  if (found == fulgurdb::FULGUR_SUCCESS) {
     record->load_data_to_mysql((char *)mysql_record,
                                fulgur_table_->get_schema());
     current_record_ = record;
@@ -508,7 +509,7 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
                                       thd_ctx);
   if (ret == fulgurdb::FULGUR_END_OF_TABLE) return HA_ERR_END_OF_FILE;
 
-  if (ret == fulgurdb::FULGUR_INVISIBLE_VERSION) {
+  if (ret == fulgurdb::FULGUR_INVISIBLE_VERSION || ret == fulgurdb::FULGUR_DELETED_VERSION) {
     seq_scan_cursor_.inc_cursor();
     return rnd_next(sl_record);
   }
@@ -895,7 +896,7 @@ int fulgurdb_commit(handlerton *hton, THD *thd, bool all) {
 
   if (txn_ctx->get_transaction_status() == fulgurdb::FULGUR_TRANSACTION_ABORT) {
     txn_ctx->abort();
-    return HA_ERR_GENERIC;  // FIXME
+    return HA_ERR_LOCK_DEADLOCK;  // DB_FORCE_ABORT: same as innodb
   }
 
   bool real_commit = all || !thd->in_multi_stmt_transaction_mode();
