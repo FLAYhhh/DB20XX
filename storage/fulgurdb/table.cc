@@ -400,6 +400,9 @@ int Table::index_prefix_search_next(uint32_t idx, const Key &key,
   } else {
     assert(false);
   }
+
+  // never reach here
+  return FULGUR_ABORT;
 }
 
 //========================private member
