@@ -85,7 +85,7 @@ struct KeyInfo {
 
   Schema schema;
   std::vector<int> key_parts;
-  uint32_t key_len = 0;
+  uint32_t key_len = 0; //key length capacity
 };
 
 class Index {
@@ -110,8 +110,9 @@ class Index {
     arg1 record: record payload, without record header
   */
   void build_key(const char *record, Key &output_key) {
-    char *key_data = (char *)malloc(sizeof(keyinfo_.key_len));
+    char *key_data = (char *)malloc(keyinfo_.key_len);
     char *key_cursor = key_data;
+    uint32_t key_len = 0;
     for (auto i : keyinfo_.key_parts) {
       const Field &field = keyinfo_.schema.get_field(i);
       const char *field_data = nullptr;
@@ -120,15 +121,17 @@ class Index {
       field.get_field_data(record, field_data, data_len);
       memcpy(key_cursor, field_data, data_len);
       key_cursor += data_len;
+      key_len += data_len;
     }
 
     output_key.s = key_data;
-    output_key.len = keyinfo_.key_len;
+    output_key.len = key_len;
   }
 
   void build_key_from_mysql_record(const char *mysql_record, Key &output_key) {
-    char *key_data = (char *)malloc(sizeof(keyinfo_.key_len));
+    char *key_data = (char *)malloc(keyinfo_.key_len);
     char *key_cursor = key_data;
+    uint32_t key_len = 0;
     for (auto i: keyinfo_.key_parts) {
       const Field &field = keyinfo_.schema.get_field(i);
       const char *field_data = nullptr;
@@ -137,9 +140,10 @@ class Index {
       field.get_mysql_field_data(mysql_record, field_data, data_len);
       memcpy(key_cursor, field_data, data_len);
       key_cursor += data_len;
+      key_len += data_len;
     }
     output_key.s = key_data;
-    output_key.len = keyinfo_.key_len;
+    output_key.len = key_len;
   }
 
   void release_key(Key &key) {
