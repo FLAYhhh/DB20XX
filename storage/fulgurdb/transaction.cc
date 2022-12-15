@@ -133,7 +133,7 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
                                                 Record *&record) {
   int retry_time = 0;
   int ret = FULGUR_RETRY;
-  while (ret == FULGUR_RETRY && retry_time < 20) {
+  while (ret == FULGUR_RETRY) {
     if (retry_time != 0)
       std::this_thread::sleep_for(std::chrono::microseconds(10));
     if (read_own) {
@@ -302,7 +302,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
 
     // panic: should not reach here
     // FIXME: trigger twice
-    assert(false);
+    // assert(false);
   }
 
   // No valid version
@@ -378,8 +378,8 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
     }
   }
   // panic: should not reach here
-  assert(false);
-  return FULGUR_ABORT;
+  //assert(false);
+  return FULGUR_RETRY;
 }
 
 /**
