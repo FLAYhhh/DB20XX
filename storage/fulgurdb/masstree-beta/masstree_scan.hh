@@ -290,6 +290,8 @@ scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
         if (n_->keylenx_is_layer(keylenx)) {
             node_stack_.push_back(root_);
             node_stack_.push_back(n_);
+            printf("push root_:%p\n", root_);
+            printf("push n_:%p\n", n_);
             root_ = entry.layer();
             return scan_down;
         } else if (n_->keylenx_has_ksuf(keylenx)) {
@@ -366,6 +368,8 @@ scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
         if (n_->keylenx_is_layer(keylenx)) {
             node_stack_.push_back(root_);
             node_stack_.push_back(n_);
+            printf("push root_:%p\n", root_);
+            printf("push n_:%p\n", n_);
             root_ = entry.layer();
             return scan_down;
         } else {
@@ -570,6 +574,7 @@ int basic_table<P>::scan_range_first(H helper,
         if (stack.state_ != mystack_type::scan_down)
             break;
         stack.ka_.shift();
+        printf("shift ka_, first_:%p\n", stack.ka_.full_string().s);
     }
 
     while (1) {
@@ -603,6 +608,7 @@ int basic_table<P>::scan_range_first(H helper,
                 stack.root_ = stack.node_stack_.back();
                 stack.node_stack_.pop_back();
                 stack.ka_.unshift();
+                printf("shift ka_, first_:%p\n", stack.ka_.full_string().s);
             } while (unlikely(stack.ka_.empty()));
             stack.v_ = helper.stable(stack.n_, stack.ka_);
             stack.perm_ = stack.n_->permutation();
@@ -616,6 +622,7 @@ int basic_table<P>::scan_range_first(H helper,
 
         case mystack_type::scan_down:
             helper.shift_clear(stack.ka_);
+            printf("shift ka_, first_:%p\n", stack.ka_.full_string().s);
             goto retry;
 
         case mystack_type::scan_retry:
@@ -674,9 +681,12 @@ int basic_table<P>::scan_range_next(H helper,
                 }
                 stack.n_ = static_cast<leaf<P>*>(stack.node_stack_.back());
                 stack.node_stack_.pop_back();
+                printf("pop n_:%p\n", stack.n_);
                 stack.root_ = stack.node_stack_.back();
                 stack.node_stack_.pop_back();
+                printf("pop root_:%p\n", stack.root_);
                 stack.ka_.unshift();
+                printf("unshift ka_, first_:%p\n", stack.ka_.full_string().s);
             } while (unlikely(stack.ka_.empty()));
             stack.v_ = helper.stable(stack.n_, stack.ka_);
             stack.perm_ = stack.n_->permutation();
@@ -690,6 +700,7 @@ int basic_table<P>::scan_range_next(H helper,
 
         case mystack_type::scan_down:
             helper.shift_clear(stack.ka_);
+            printf("shift ka_, first_:%p", stack.ka_.full_string().s);
             goto retry;
 
         case mystack_type::scan_retry:

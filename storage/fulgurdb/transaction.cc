@@ -305,6 +305,8 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     // panic: should not reach here
     // FIXME: trigger twice
     // assert(false);
+    LOG_ERROR("Strange execution path");
+    version_iter->unlock_header();
   }
 
   // No valid version
@@ -340,7 +342,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
   } else if (version_iter->get_transaction_id() == INVALID_TRANSACTION_ID) {
     // still the latest version, and free
     if (transaction_id_ < version_iter->get_last_read_timestamp()) {
-      LOG_ERROR(
+      LOG_DEBUG(
           "Transaction[%lu]:Latest version has been read by newer transaction, cannot own. last_read_ts_:%lu",
           transaction_id_, version_iter->get_last_read_timestamp());
       version_iter->unlock_header();
@@ -369,7 +371,8 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
           transaction_id_, version_iter->get_transaction_id());
       version_iter->unlock_header();
       return FULGUR_ABORT;
-    } else if (transaction_id_ == version_iter->get_transaction_id()) {
+    } else {
+      assert(transaction_id_ == version_iter->get_transaction_id());
       version_iter->unlock_header();
       if (version_iter->get_newer_version() != nullptr) {
         record = version_iter->get_newer_version();
@@ -380,7 +383,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
     }
   }
   // panic: should not reach here
-  //assert(false);
+  assert(false);
   return FULGUR_RETRY;
 }
 
