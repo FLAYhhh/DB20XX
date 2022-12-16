@@ -85,12 +85,14 @@
 #include "storage/fulgurdb/ha_fulgurdb.h"
 #include <cstdint>
 
+#include "ha_fulgurdb.h"
 #include "message_logger.h"
 #include "my_dbug.h"
 #include "mysql/plugin.h"
 #include "return_status.h"
 #include "sql/sql_class.h"
 #include "sql/sql_plugin.h"
+#include "sql/sql_select.h"  // actual_key_parts
 #include "thread_context.h"
 #include "typelib.h"
 
@@ -320,25 +322,75 @@ int ha_fulgurdb::delete_row(const uchar *) {
   return 0;
 }
 
-int ha_fulgurdb::index_read(uchar *mysql_record, const uchar *key, uint key_len,
-                            enum ha_rkey_function find_flag) {
-  index_key_.assign((const char *)key, key_len);
+void ha_fulgurdb::build_key_from_mysql_key(const uchar *mysql_key,
+                                           key_part_map keypart_map,
+                                           fulgurdb::Key &fulgur_key,
+                                           bool &full_key_search) {
+  /* works only with key prefixes */
+  assert(((keypart_map + 1) & keypart_map) == 0);
 
+  KEY *key_info = table->key_info + active_index;
+  KEY_PART_INFO *key_part = key_info->key_part;
+  KEY_PART_INFO *end_key_part = key_part + actual_key_parts(key_info);
+  uint full_key_part_num = end_key_part - key_part;
+  uint used_key_part_num = 0;
+
+  char *materized_key =
+      (char *)malloc(fulgur_table_->get_key_length(active_index));
+  uint key_len = 0;
+
+  char *p = materized_key;
+  while (key_part < end_key_part && keypart_map) {
+    uint part_len = 0;
+    if (key_part->store_length == key_part->length) {
+      part_len = key_part->length;
+      memcpy(p, mysql_key, part_len);
+      p += part_len;
+      mysql_key += part_len;
+    } else {
+      uint len_bytes = key_part->store_length - key_part->length;
+      memcpy(&part_len, mysql_key, len_bytes);
+      mysql_key += len_bytes;
+      memcpy(p, mysql_key, part_len);
+      p += part_len;
+      mysql_key += key_part->length;
+    }
+
+    key_len += part_len;
+    keypart_map >>= 1;
+    key_part++;
+    used_key_part_num++;
+  }
+
+  fulgur_key.assign((const char *)materized_key, key_len);
+  full_key_search = (used_key_part_num == full_key_part_num ? true : false);
+}
+
+/**
+   @brief
+   Positions an index cursor to the index specified in the handle
+   ('active_index'). Fetches the row if available. If the key value is null,
+   begin at the first key of the index.
+   @returns 0 if success (found a record); non-zero if no record.
+*/
+int ha_fulgurdb::index_read_map(uchar *mysql_record, const uchar *key,
+                                key_part_map keypart_map,
+                                enum ha_rkey_function find_flag) {
+  bool full_key_search = true;
   fulgurdb::Record *record = nullptr;
   fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
   int found = fulgurdb::FULGUR_SUCCESS;
+  scan_direction_ = find_flag;  // flag的定义见include/my_base.h
+  build_key_from_mysql_key(key, keypart_map, index_key_, full_key_search);
 
-  // flag的定义见include/my_base.h
-  scan_direction_ = find_flag;
-  if (find_flag == HA_READ_KEY_EXACT) {
-    if (key_len == fulgur_table_->get_key_length(active_index)) {
-      found = fulgur_table_->get_record_from_index(
-          active_index, index_key_, record, *thd_ctx, read_own_statement_);
-    } else {
-      found = fulgur_table_->index_prefix_key_search(
-          active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
-          read_own_statement_);
-    }
+  if (!full_key_search) {
+    assert(find_flag == HA_READ_KEY_EXACT);
+    found = fulgur_table_->index_prefix_key_search(
+        active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
+        read_own_statement_);
+  } else if (find_flag == HA_READ_KEY_EXACT) {
+    found = fulgur_table_->get_record_from_index(
+        active_index, index_key_, record, *thd_ctx, read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_NEXT) {
     found = fulgur_table_->index_scan_range_first(
         active_index, index_key_, record, true, masstree_scan_stack_, *thd_ctx,
@@ -509,7 +561,8 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
                                       thd_ctx);
   if (ret == fulgurdb::FULGUR_END_OF_TABLE) return HA_ERR_END_OF_FILE;
 
-  if (ret == fulgurdb::FULGUR_INVISIBLE_VERSION || ret == fulgurdb::FULGUR_DELETED_VERSION) {
+  if (ret == fulgurdb::FULGUR_INVISIBLE_VERSION ||
+      ret == fulgurdb::FULGUR_DELETED_VERSION) {
     seq_scan_cursor_.inc_cursor();
     return rnd_next(sl_record);
   }

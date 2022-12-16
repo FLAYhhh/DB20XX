@@ -248,9 +248,15 @@ class ha_fulgurdb : public handler {
   */
   int delete_row(const uchar *buf) override;
 
-  int index_read(uchar *buf, const uchar *key, uint key_len,
-                 enum ha_rkey_function find_flag) override;
-
+  /**
+     @brief
+     Positions an index cursor to the index specified in the handle
+     ('active_index'). Fetches the row if available. If the key value is null,
+     begin at the first key of the index.
+     @returns 0 if success (found a record); non-zero if no record.
+  */
+  int index_read_map(uchar *buf, const uchar *key, key_part_map keypart_map,
+                     enum ha_rkey_function find_flag) override;
   /** @brief
     We implement this in ha_fulgurdb.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
@@ -304,4 +310,9 @@ class ha_fulgurdb : public handler {
   THR_LOCK_DATA **store_lock(
       THD *thd, THR_LOCK_DATA **to,
       enum thr_lock_type lock_type) override;  ///< required
+                                               ///
+ private:
+  void build_key_from_mysql_key(const uchar *mysql_key, key_part_map keypart_map,
+                                fulgurdb::Key &fulgur_key,
+                                bool &full_key_search);
 };

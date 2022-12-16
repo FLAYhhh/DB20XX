@@ -32,7 +32,7 @@ static void schema_add_non_inline_field(fulgurdb::Schema &schema,
                            fulgurdb::Field::STORE_NON_INLINE, mysql_pack_length,
                            offset_in_mysql_rec);
   se_field.set_mysql_length_bytes(length_bytes);
-  offset_in_fulgur_rec += length_bytes = sizeof(uint64_t);
+  offset_in_fulgur_rec += (length_bytes + sizeof(uint64_t));
   offset_in_mysql_rec += mysql_pack_length;
 
   schema.add_field(se_field);
