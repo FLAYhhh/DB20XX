@@ -20,14 +20,15 @@ namespace fulgurdb {
  *@brief <NOT SURE> FIXME
  */
 class Latch {
+  friend class Record;
   public:
     void init() {
-      flag.clear(std::memory_order_relaxed);
+      flag_.clear(std::memory_order_relaxed);
     }
 
     void lock() {
       uint64_t cnt = 0;
-      while (flag.test_and_set(std::memory_order_acquire)) {
+      while (flag_.test_and_set(std::memory_order_acquire)) {
         cnt++;
         if (cnt % 10000 == 0) {
           LOG_TRACE("lock loop count:%lu", cnt);
@@ -36,11 +37,11 @@ class Latch {
     }
 
     void unlock() {
-      flag.clear(std::memory_order_relaxed);
+      flag_.clear(std::memory_order_relaxed);
     }
 
   private:
-    std::atomic_flag flag = ATOMIC_FLAG_INIT;
+    std::atomic_flag flag_ = ATOMIC_FLAG_INIT;
 };
 
 }

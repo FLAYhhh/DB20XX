@@ -237,8 +237,8 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
         return FULGUR_DELETED_VERSION;
       }
     } else if (transaction_id_ < version_iter->get_begin_timestamp()) {
-      if (version_iter == vchain_head.latest_record_)
-        version_iter->unlock_header();
+      //if (version_iter == vchain_head.latest_record_)
+      version_iter->unlock_header();
       version_iter = version_iter->get_older_version();
       continue;
     }
@@ -250,6 +250,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     // if it's a stable old visible version
     if (version_iter->get_end_timestamp() != MAX_TIMESTAMP &&
         transaction_id_ <= version_iter->get_end_timestamp()) {
+      version_iter->unlock_header();
       return FULGUR_SUCCESS;
     } else if (version_iter->get_end_timestamp() == MIN_TIMESTAMP) {
       if (version_iter == vchain_head.latest_record_)
@@ -279,6 +280,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
           } else {
             // LOG_DEBUG("an older writer is owning the version");
             //  the younger transaction wants to update this version
+            version_iter->unlock_header();
             return FULGUR_RETRY;
           }
         } else if (transaction_id_ < version_iter->get_transaction_id()) {
