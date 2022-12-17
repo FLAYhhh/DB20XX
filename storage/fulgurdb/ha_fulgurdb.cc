@@ -334,9 +334,9 @@ void ha_fulgurdb::build_key_from_mysql_key(const uchar *mysql_key,
   KEY_PART_INFO *end_key_part = key_part + actual_key_parts(key_info);
   uint full_key_part_num = end_key_part - key_part;
   uint used_key_part_num = 0;
+  fulgurdb::ThreadContext *thd_ctx = get_thread_ctx();
 
-  char *materized_key =
-      (char *)malloc(fulgur_table_->get_key_length(active_index));
+  char *materized_key = thd_ctx->get_key_container();
   uint key_len = 0;
 
   char *p = materized_key;

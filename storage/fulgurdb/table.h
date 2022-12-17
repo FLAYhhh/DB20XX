@@ -74,9 +74,9 @@ class Table {
     insert record location to index
   */
   void insert_record_to_index(uint32_t idx, VersionChainHead *vchain_head,
-                              threadinfo &ti);
+                              ThreadContext *thd_ctx);
 
-  void insert_record_to_index(VersionChainHead *vchain_head, threadinfo &ti);
+  void insert_record_to_index(VersionChainHead *vchain_head, ThreadContext *thd_ctx);
 
   /**
   @brief

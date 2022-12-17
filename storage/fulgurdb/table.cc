@@ -38,9 +38,8 @@ int Table::insert_record_from_mysql(char *mysql_record,
   // check primary key existance
   if (indexes_.size() > 0) {
     Key key;
-    indexes_[0]->build_key_from_mysql_record(mysql_record, key);
+    indexes_[0]->build_key_from_mysql_record(mysql_record, key, thd_ctx);
     int ret = get_record_from_index(0, key, record, *thd_ctx, false);
-    indexes_[0]->release_key(key);
 
     if (ret == FULGUR_KEY_NOT_EXIST) {
       // do nothing, pass checking
@@ -169,17 +168,16 @@ void Table::build_index(const KeyInfo &keyinfo, threadinfo &ti) {
   insert record location to index
 */
 void Table::insert_record_to_index(uint32_t idx, VersionChainHead *vchain_head,
-                                   threadinfo &ti) {
+                                   ThreadContext *thd_ctx) {
   Key key;
-  indexes_[idx]->build_key(vchain_head->get_latest_record_payload(), key);
-  indexes_[idx]->put(key, vchain_head, ti);
-  indexes_[idx]->release_key(key);
+  indexes_[idx]->build_key(vchain_head->get_latest_record_payload(), key, thd_ctx);
+  indexes_[idx]->put(key, vchain_head, *thd_ctx->ti_);
 }
 
 void Table::insert_record_to_index(VersionChainHead *vchain_head,
-                                   threadinfo &ti) {
+                                   ThreadContext *thd_ctx) {
   for (size_t i = 0; i < indexes_.size(); i++) {
-    insert_record_to_index(i, vchain_head, ti);
+    insert_record_to_index(i, vchain_head, thd_ctx);
   }
 }
 

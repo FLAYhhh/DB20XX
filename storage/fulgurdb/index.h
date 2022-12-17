@@ -5,82 +5,21 @@
 #include "masstree-beta/masstree_scan.hh"
 #include "masstree-beta/masstree_tcursor.hh"
 #include "record.h"
+#include "transaction.h"
 #include "utils.h"
 #include "version_chain.h"
+#include "thread_context.h"
 
 namespace fulgurdb {
-
-// FIXME: 当前设置的限制没有什么依据
-constexpr uint32_t FULGUR_MAX_KEYS = 255;
-constexpr uint32_t FULGUR_MAX_KEY_PARTS = 255;
-constexpr uint32_t FULGUR_MAX_KEY_LENGTH = 255;
 using namespace Masstree;
 
-#if 0
-struct Key {
-  Key(char *s, uint32_t l, bool own = true) : data(s), len(l), own_mem(own) {}
-  Key() {}
-  ~Key() {
-    if (own_mem) free(data);
-  }
-
-  void set(char *s, uint32_t l, bool own = false) {
-    data = s;
-    len = l;
-    own_mem = own;
-  }
-
-  void reset() {
-    data = nullptr;
-    len = 0;
-  }
-
-  static bool prefix_match(const Key &key1, const Key &key2) {
-    uint32_t min_len = key1.len;
-    if (key2.len < min_len) min_len = key2.len;
-
-    if (memcmp(key1.data, key2.data, min_len) == 0)
-      return true;
-    else
-      return false;
-  }
-
-  bool operator<(const Key &other) {
-    uint32_t min_len = len;
-    if (other.len < len) min_len = other.len;
-    if (memcmp(data, other.data, min_len) < 0)
-      return true;
-    else
-      return false;
-  }
-
-  bool operator>(const Key &other) {
-    uint32_t min_len = len;
-    if (other.len < len) min_len = other.len;
-    if (memcmp(data, other.data, min_len) > 0)
-      return true;
-    else
-      return false;
-  }
-
-  char *data = nullptr;
-  uint32_t len = 0;
-  bool own_mem = true;
-};
-#endif
 typedef Str Key;
-
 struct KeyInfo {
   /**
     mysql keypart counted from 1,
     fulgurdb keypart counted from 0;
   */
   void add_key_part(uint32_t key_part) { key_parts.push_back(key_part - 1); }
-
-  // const std::vector<int> &get_key_parts() const{
-  //   return key_parts;
-  // }
-
   uint32_t get_key_length() { return key_len; }
 
   Schema schema;
@@ -109,8 +48,8 @@ class Index {
   @args
     arg1 record: record payload, without record header
   */
-  void build_key(const char *record, Key &output_key) {
-    char *key_data = (char *)malloc(keyinfo_.key_len);
+  void build_key(const char *record, Key &output_key, ThreadContext *thd_ctx) {
+    char *key_data = thd_ctx->get_key_container();
     char *key_cursor = key_data;
     uint32_t key_len = 0;
     for (auto i : keyinfo_.key_parts) {
@@ -128,8 +67,8 @@ class Index {
     output_key.len = key_len;
   }
 
-  void build_key_from_mysql_record(const char *mysql_record, Key &output_key) {
-    char *key_data = (char *)malloc(keyinfo_.key_len);
+  void build_key_from_mysql_record(const char *mysql_record, Key &output_key, ThreadContext *thd_ctx) {
+    char *key_data = thd_ctx->get_key_container();
     char *key_cursor = key_data;
     uint32_t key_len = 0;
     for (auto i: keyinfo_.key_parts) {
@@ -146,14 +85,7 @@ class Index {
     output_key.len = key_len;
   }
 
-  void release_key(Key &key) {
-    free(const_cast<char *>(key.s));
-  }
-
   uint32_t get_key_length() { return keyinfo_.get_key_length(); }
-  // const std::vector<int> &get_key_parts() const { return
-  // keyinfo_.get_key_parts(); }
-
   const KeyInfo &get_key_info() const { return keyinfo_; }
 
  protected:

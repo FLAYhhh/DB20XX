@@ -26,7 +26,6 @@ void TransactionContext::mvto_insert(Record *record, VersionChainHead *vchain_he
                                      ThreadContext *thd_ctx) {
   // Alloc version chain head & insert it to index
   uint32_t writer_idx = thd_ctx->get_thread_id() % Table::PARALLEL_WRITER_NUM;
-  threadinfo *ti = thd_ctx->get_threadinfo();
   VersionChainHeadBlock *vchain_head_block = nullptr;
   int status = FULGUR_SUCCESS;
 
@@ -51,7 +50,7 @@ void TransactionContext::mvto_insert(Record *record, VersionChainHead *vchain_he
     // We need to insert uncommited record to index,
     // so that subsequent queries in the same transaction
     // can find it from index
-    table->insert_record_to_index(vchain_head, *ti);
+    table->insert_record_to_index(vchain_head, thd_ctx);
   } else {
     Record *deleted_version = vchain_head->latest_record_;
     deleted_version->set_newer_version(record);
@@ -307,6 +306,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     // assert(false);
     LOG_ERROR("Strange execution path");
     version_iter->unlock_header();
+    return FULGUR_RETRY;
   }
 
   // No valid version
