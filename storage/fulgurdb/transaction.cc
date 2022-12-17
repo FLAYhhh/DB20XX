@@ -143,10 +143,6 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
     retry_time++;
   }
 
-  if (retry_time == 20) {
-    LOG_ERROR("Transaction:%lu, retry 20 times but still failed\n", transaction_id_);
-  }
-
   if (ret == FULGUR_RETRY) ret = FULGUR_ABORT;
   return ret;
 }
