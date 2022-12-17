@@ -164,11 +164,12 @@ int TransactionContext::commit() {
       if (record->get_end_timestamp() != MIN_TIMESTAMP)
         record->set_end_timestamp(transaction_id_);
       VersionChainHead *vchain_head = record->get_vchain_head();
-      vchain_head->set_latest_record(new_version);
       // FIXME:BUG, assertion failed
       assert(new_version->get_begin_timestamp() ==
              MAX_TIMESTAMP);  // assert it's an uncommitted version
       new_version->set_begin_timestamp(transaction_id_);
+      // TODO: add memory fence (make sure versions in vchain are committed)
+      vchain_head->set_latest_record(new_version);
     }
     // Insert(create vchain) operation
     if (record->get_begin_timestamp() == MAX_TIMESTAMP)
@@ -217,90 +218,67 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
                                                Record *&record) {
   Record *version_iter = vchain_head.latest_record_;
   while (version_iter != nullptr) {
-    // only need to lock the latest version, because old versions are stable
-    if (version_iter == vchain_head.latest_record_) version_iter->lock_header();
-    // begin_ts_ is immutable in version chain,
-    // so we can find the first version that satisfy
-    // version_iter->begin_ts_ <= transaction_id_
-    if (transaction_id_ == version_iter->get_transaction_id()) {
-      version_iter->unlock_header();
-      record = version_iter;
-      if (version_iter->get_end_timestamp() != MIN_TIMESTAMP) {
-        return FULGUR_SUCCESS;
-      } else {
-        LOG_TRACE("Transaction[%lu]: a deleted version", transaction_id_);
-        return FULGUR_DELETED_VERSION;
-      }
-    } else if (transaction_id_ < version_iter->get_begin_timestamp()) {
-      //if (version_iter == vchain_head.latest_record_)
-      version_iter->unlock_header();
-      version_iter = version_iter->get_older_version();
+    // Rewrite start
+    // traverse to a visible version without lock
+    if (transaction_id_ < version_iter->header_.begin_ts_) {
+      version_iter = version_iter->header_.older_version_;
       continue;
     }
 
-    // At this point, we've got the first version that
-    // satisfy version_iter->begin_ts_ <= transaction_id_
-
-    record = version_iter;
-    // if it's a stable old visible version
-    if (version_iter->get_end_timestamp() != MAX_TIMESTAMP &&
-        transaction_id_ <= version_iter->get_end_timestamp()) {
-      version_iter->unlock_header();
-      return FULGUR_SUCCESS;
-    } else if (version_iter->get_end_timestamp() == MIN_TIMESTAMP) {
-      if (version_iter == vchain_head.latest_record_)
-        version_iter->unlock_header();
-      LOG_TRACE("Transaction[%lu]: meet a deleted version", transaction_id_);
-      return FULGUR_DELETED_VERSION;
-    } else {
-      // if it's the latest version
-      // Got a free latest version, we can always read it
-      if (version_iter->get_transaction_id() == INVALID_TRANSACTION_ID) {
-        update_last_read_ts_if_need(version_iter);
-        version_iter->unlock_header();
+    // a stable old version, also need no lock
+    if (version_iter->header_.end_ts_ != MAX_TIMESTAMP) {
+      record = version_iter;
+      if (version_iter->header_.end_ts_ == MIN_TIMESTAMP) {
+        return FULGUR_DELETED_VERSION;
+      } else {
+        assert(transaction_id_ < version_iter->header_.end_ts_);
         return FULGUR_SUCCESS;
-        // A temporary latest version, but not stable
-      } else if (version_iter->get_transaction_id() != INVALID_TRANSACTION_ID) {
-        if (version_iter->get_transaction_id() < transaction_id_) {
-          // A older transaction is holding the version
-          LOG_DEBUG("Transaction[%lu]: an older transaction[txn_id_:%lu] is owning the version",
-                    transaction_id_, version_iter->get_transaction_id());
-          version_iter->unlock_header();
-          Record *possible_newer_version = version_iter->get_newer_version();
-          if (possible_newer_version &&
-              possible_newer_version->get_end_timestamp() == MIN_TIMESTAMP) {
-            // the older transaction wants to delete this version
-            // LOG_DEBUG("an older deleter is owning the version");
-            return FULGUR_ABORT;
-          } else {
-            // LOG_DEBUG("an older writer is owning the version");
-            //  the younger transaction wants to update this version
-            version_iter->unlock_header();
-            return FULGUR_RETRY;
-          }
-        } else if (transaction_id_ < version_iter->get_transaction_id()) {
-          // An older transaction is holding the version
-          update_last_read_ts_if_need(version_iter);
-          version_iter->unlock_header();
-          return FULGUR_SUCCESS;
-        } else {
-          assert(transaction_id_ == version_iter->get_transaction_id());
-          // Always read from version list head;
-          // and always put the updated version ahead of the version chain;
-          // so that we can always get the updated version.
-          version_iter->unlock_header();
-          if (version_iter->get_newer_version() != nullptr) {
-            record = version_iter->get_newer_version();
-          }
-          return FULGUR_SUCCESS;
-        }
       }
     }
 
-    // panic: should not reach here
-    // FIXME: trigger twice
-    // assert(false);
-    LOG_ERROR("Strange execution path");
+    // other cases: an latest version in previous check, (but may have become an old version at this point)
+
+    // owned by current transaction
+    if (version_iter->header_.txn_id_ == transaction_id_) {
+      if (version_iter->header_.newer_version_) {
+        version_iter = version_iter->header_.newer_version_;
+        assert(version_iter->header_.txn_id_ == transaction_id_);
+        assert(version_iter->header_.begin_ts_ == MAX_TIMESTAMP);
+      }
+      record = version_iter;
+      if (version_iter->header_.end_ts_ == MIN_TIMESTAMP) {
+        return FULGUR_DELETED_VERSION;
+      } else {
+        return FULGUR_SUCCESS;
+      }
+    }
+
+    // owned by others or noone
+    version_iter->lock_header();
+    if (version_iter->header_.txn_id_ == INVALID_TRANSACTION_ID) {
+      update_last_read_ts_if_need(version_iter);
+      version_iter->unlock_header();
+      record = version_iter;
+      return FULGUR_SUCCESS;
+    } else {
+      // because giveup owership of record at commit time does not hold lock,
+      // txn_id_ can be 0 here.
+      if (version_iter->header_.txn_id_ < transaction_id_ &&
+          version_iter->header_.txn_id_ != INVALID_TRANSACTION_ID) {
+        version_iter->unlock_header();
+        LOG_DEBUG("Transaction[%lu]: an older transaction[txn_id_:%lu] is owning the version",
+                  transaction_id_, version_iter->get_transaction_id());
+        record = version_iter;
+        return FULGUR_RETRY;
+      } else if (transaction_id_ < version_iter->header_.txn_id_) {
+        update_last_read_ts_if_need(version_iter);
+        version_iter->unlock_header();
+        record = version_iter;
+        return FULGUR_SUCCESS;
+      }
+    }
+
+    LOG_ERROR("concurrent exception path");
     version_iter->unlock_header();
     return FULGUR_RETRY;
   }
