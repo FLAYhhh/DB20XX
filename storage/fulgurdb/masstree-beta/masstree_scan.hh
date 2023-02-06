@@ -77,6 +77,7 @@ class scanstackelt {
     void reset() {
       root_ = nullptr;
       scan_count_ = 0;
+      node_stack_.clear();
     }
 
     key_type &get_current_key() {
@@ -290,8 +291,8 @@ scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
         if (n_->keylenx_is_layer(keylenx)) {
             node_stack_.push_back(root_);
             node_stack_.push_back(n_);
-            printf("push root_:%p\n", root_);
-            printf("push n_:%p\n", n_);
+            printf("%s %d push root_:%p\n", __FILE__, __LINE__, root_);
+            printf("%s %d push n_:%p\n", __FILE__, __LINE__, n_);
             root_ = entry.layer();
             return scan_down;
         } else if (n_->keylenx_has_ksuf(keylenx)) {
@@ -368,8 +369,8 @@ scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
         if (n_->keylenx_is_layer(keylenx)) {
             node_stack_.push_back(root_);
             node_stack_.push_back(n_);
-            printf("push root_:%p\n", root_);
-            printf("push n_:%p\n", n_);
+            printf("%s %d push root_:%p\n", __FILE__, __LINE__, root_);
+            printf("%s %d push n_:%p\n", __FILE__, __LINE__, n_);
             root_ = entry.layer();
             return scan_down;
         } else {
@@ -574,12 +575,13 @@ int basic_table<P>::scan_range_first(H helper,
         if (stack.state_ != mystack_type::scan_down)
             break;
         stack.ka_.shift();
-        printf("shift ka_, first_:%p\n", stack.ka_.full_string().s);
+        printf("%s %d shift ka_, first_:%p\n", __FILE__, __LINE__, stack.ka_.full_string().s);
     }
 
     while (1) {
         switch (stack.state_) {
         case mystack_type::scan_emit:
+            printf("%s %d scan_emit\n", __FILE__, __LINE__);
         // scan_range_first在第一次emit后就可以返回了
             ++stack.scan_count_;
             /*
@@ -592,12 +594,14 @@ int basic_table<P>::scan_range_first(H helper,
 
         case mystack_type::scan_find_next:
         find_next:
+            printf("%s %d scan_find_next\n", __FILE__, __LINE__);
             stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
             //if (stack.state_ != mystack_type::scan_up)
                 //scanner.visit_leaf(stack, stack.ka_, ti);
             break;
 
         case mystack_type::scan_up:
+            printf("%s %d scan_up\n", __FILE__, __LINE__);
             do {
                 if (stack.node_stack_.empty()) {
                     stack.state_ = mystack_type::scan_no_value;
@@ -605,10 +609,12 @@ int basic_table<P>::scan_range_first(H helper,
                 }
                 stack.n_ = static_cast<leaf<P>*>(stack.node_stack_.back());
                 stack.node_stack_.pop_back();
+                printf("%s %d pop n_:%p\n", __FILE__, __LINE__, stack.n_);
                 stack.root_ = stack.node_stack_.back();
                 stack.node_stack_.pop_back();
+                printf("%s %d pop root_:%p\n", __FILE__, __LINE__, stack.root_);
                 stack.ka_.unshift();
-                printf("shift ka_, first_:%p\n", stack.ka_.full_string().s);
+                printf("%s %d unshift ka_, first_:%p\n", __FILE__, __LINE__, stack.ka_.full_string().s);
             } while (unlikely(stack.ka_.empty()));
             stack.v_ = helper.stable(stack.n_, stack.ka_);
             stack.perm_ = stack.n_->permutation();
@@ -621,16 +627,19 @@ int basic_table<P>::scan_range_first(H helper,
             goto find_next;
 
         case mystack_type::scan_down:
+            printf("%s %d scan_down\n", __FILE__, __LINE__);
             helper.shift_clear(stack.ka_);
-            printf("shift ka_, first_:%p\n", stack.ka_.full_string().s);
+            printf("%s %d shift ka_, first_:%p\n", __FILE__, __LINE__, stack.ka_.full_string().s);
             goto retry;
 
         case mystack_type::scan_retry:
         retry:
+            printf("%s %d scan_retry\n", __FILE__, __LINE__);
             stack.state_ = stack.find_retry(helper, stack.ka_, ti);
             break;
 
         case mystack_type::scan_no_value:
+            printf("%s %d scan_no_value\n", __FILE__, __LINE__);
             goto done;
             break;
         }
@@ -653,6 +662,7 @@ int basic_table<P>::scan_range_next(H helper,
     while (1) {
         switch (stack.state_) {
         case mystack_type::scan_emit:
+            printf("%s %d scan_emit\n", __FILE__, __LINE__);
         // scan_range_next每次emit之后需要返回
             ++stack.scan_count_;
             /*
@@ -668,12 +678,14 @@ int basic_table<P>::scan_range_next(H helper,
 
         case mystack_type::scan_find_next:
         find_next:
+            printf("%s %d scan_find_next\n", __FILE__, __LINE__);
             stack.state_ = stack.find_next(helper, stack.ka_, stack.entry_);
             //if (stack.state_ != mystack_type::scan_up)
                 //scanner.visit_leaf(stack, stack.ka_, ti);
             break;
 
         case mystack_type::scan_up:
+            printf("%s %d scan_up\n", __FILE__, __LINE__);
             do {
                 if (stack.node_stack_.empty()) {
                     stack.state_ = mystack_type::scan_no_value;
@@ -681,12 +693,12 @@ int basic_table<P>::scan_range_next(H helper,
                 }
                 stack.n_ = static_cast<leaf<P>*>(stack.node_stack_.back());
                 stack.node_stack_.pop_back();
-                printf("pop n_:%p\n", stack.n_);
+                printf("%s %d pop n_:%p\n", __FILE__, __LINE__, stack.n_);
                 stack.root_ = stack.node_stack_.back();
                 stack.node_stack_.pop_back();
-                printf("pop root_:%p\n", stack.root_);
+                printf("%s %d pop root_:%p\n", __FILE__, __LINE__, stack.root_);
                 stack.ka_.unshift();
-                printf("unshift ka_, first_:%p\n", stack.ka_.full_string().s);
+                printf("%s %d unshift ka_, first_:%p\n", __FILE__, __LINE__, stack.ka_.full_string().s);
             } while (unlikely(stack.ka_.empty()));
             stack.v_ = helper.stable(stack.n_, stack.ka_);
             stack.perm_ = stack.n_->permutation();
@@ -699,16 +711,19 @@ int basic_table<P>::scan_range_next(H helper,
             goto find_next;
 
         case mystack_type::scan_down:
+            printf("%s %d scan_down\n", __FILE__, __LINE__);
             helper.shift_clear(stack.ka_);
-            printf("shift ka_, first_:%p", stack.ka_.full_string().s);
+            printf("%s %d shift ka_, first_:%p", __FILE__, __LINE__, stack.ka_.full_string().s);
             goto retry;
 
         case mystack_type::scan_retry:
         retry:
+            printf("%s %d scan_retry\n", __FILE__, __LINE__);
             stack.state_ = stack.find_retry(helper, stack.ka_, ti);
             break;
 
         case mystack_type::scan_no_value:
+            printf("%s %d scan_no_value\n", __FILE__, __LINE__);
             goto done;
             break;
         }
