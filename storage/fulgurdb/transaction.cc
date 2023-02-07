@@ -230,9 +230,12 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
       record = version_iter;
       if (version_iter->header_.end_ts_ == MIN_TIMESTAMP) {
         return FULGUR_DELETED_VERSION;
-      } else {
-        assert(transaction_id_ < version_iter->header_.end_ts_);
+      } else if (transaction_id_ < version_iter->header_.end_ts_) {
         return FULGUR_SUCCESS;
+      } else if ( transaction_id_ >= version_iter->header_.end_ts_) {
+        return FULGUR_RETRY;
+      } else {
+        assert(false);
       }
     }
 

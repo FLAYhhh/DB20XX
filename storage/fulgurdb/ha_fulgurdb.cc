@@ -561,16 +561,19 @@ int ha_fulgurdb::rnd_next(uchar *sl_record) {
                                       thd_ctx);
   if (ret == fulgurdb::FULGUR_END_OF_TABLE) return HA_ERR_END_OF_FILE;
 
+  if (ret == fulgurdb::FULGUR_RETRY || ret == fulgurdb::FULGUR_FAIL
+      || ret == fulgurdb::FULGUR_ABORT) {
+    // fulgurdb::LOG_DEBUG("can not read a visible version, abort");
+    return HA_ERR_GENERIC;
+  }
+
   if (ret == fulgurdb::FULGUR_INVISIBLE_VERSION ||
       ret == fulgurdb::FULGUR_DELETED_VERSION) {
     seq_scan_cursor_.inc_cursor();
     return rnd_next(sl_record);
   }
 
-  if (ret == fulgurdb::FULGUR_RETRY || ret == fulgurdb::FULGUR_FAIL) {
-    // fulgurdb::LOG_DEBUG("can not read a visible version, abort");
-    return HA_ERR_GENERIC;
-  }
+  assert(ret == fulgurdb::FULGUR_SUCCESS);
 
   // At this point, we've got a visible record version
   seq_scan_cursor_.record_->load_data_to_mysql((char *)sl_record,
