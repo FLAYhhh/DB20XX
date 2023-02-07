@@ -21,6 +21,7 @@ class TableScanCursor {
 
  public:
   void reset() {
+    current_block_ = nullptr;
     block_id_ = 0;
     idx_in_block_ = 0;
     record_ = nullptr;
@@ -34,6 +35,7 @@ class TableScanCursor {
   void inc_cursor() { idx_in_block_ += 1; }
 
  public:
+  VersionChainHeadBlock *current_block_ = nullptr;
   uint32_t block_id_ = 0;
   uint32_t idx_in_block_ = 0;
   Record *record_ = nullptr;
@@ -161,9 +163,6 @@ class Table {
   uint32_t records_in_block_ = DEFAULT_RECORDS_PER_BLOCK;
   CuckooMap<uint32_t, RecordBlock *> record_blocks_;
   std::array<RecordBlock *, PARALLEL_WRITER_NUM> record_allocators_;
-
-  // table scan
-  VersionChainHeadBlock *table_scan_cached_block_;
 
   // index
   std::vector<MasstreeIndex *> indexes_;

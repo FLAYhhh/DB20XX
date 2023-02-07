@@ -102,37 +102,59 @@ int Table::delete_record(Record *record, ThreadContext *thd_ctx) {
 */
 int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
                           ThreadContext *thd_ctx) {
-  if (scan_cursor.record_ == nullptr) {
-    table_scan_cached_block_ = get_vchain_head_block(scan_cursor.block_id_);
+  TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+  if (scan_cursor.current_block_ == nullptr) {
+    scan_cursor.current_block_ = get_vchain_head_block(scan_cursor.block_id_);
+    /*
+    LOG_DEBUG(
+        "Transaction[%ld] Get first vchain_head_block. "
+        "scan_cursor.block_id_=%d, "
+        "table_scan_cached_block_.block_id=%d",
+        txn_ctx->transaction_id_, scan_cursor.block_id_,
+        table_scan_cached_block_->block_id_);
+    */
   }
-  assert(table_scan_cached_block_ != nullptr);
+  assert(scan_cursor.current_block_ != nullptr);
 
   // jump to next useful block
   while (scan_cursor.idx_in_block_ ==
-         table_scan_cached_block_->valid_entry_num_.load()) {
+         scan_cursor.current_block_->valid_entry_num_.load()) {
     // have reached the end of current block, jump to next
     scan_cursor.block_id_ += 1;
     scan_cursor.idx_in_block_ = 0;
+    /*
+    LOG_DEBUG("Transaction[%ld] Advance scan_cursor. block_id_=%d",
+              txn_ctx->transaction_id_, scan_cursor.block_id_);
+    */
 
     if (scan_cursor.block_id_ >= next_vchain_head_block_id_) {
-      LOG_DEBUG("table scan end");
+      /*
+      LOG_DEBUG(
+          "Transaction[%ld] Table scan end. scan_cursor.block_id_=%d, "
+          "next_vchain_head_block_id_=%d",
+          txn_ctx->transaction_id_, scan_cursor.block_id_,
+          next_vchain_head_block_id_.load());
+      */
       return FULGUR_END_OF_TABLE;
     }
-    table_scan_cached_block_ = get_vchain_head_block(scan_cursor.block_id_);
-    assert(table_scan_cached_block_ != nullptr);
-    LOG_DEBUG(
-        "swith to next block. scan_cursor.block_id_: %u, "
-        "scan_cursor.idx_in_block_: %u, cached_block_id: %u, "
-        "cached_block.valid_entry_num_: %u",
-        scan_cursor.block_id_, scan_cursor.idx_in_block_,
-        table_scan_cached_block_->block_id_,
-        table_scan_cached_block_->valid_entry_num_.load());
+    scan_cursor.current_block_ = get_vchain_head_block(scan_cursor.block_id_);
+    assert(scan_cursor.current_block_ != nullptr);
+    /*
+    LOG_DEBUG("Transaction[%ld] Advance vchain_head_block. block_id_=%d",
+              txn_ctx->transaction_id_, table_scan_cached_block_->block_id_);
+    */
   }
 
-  VersionChainHead *vchain_head =
-      table_scan_cached_block_->get_vchain_head(&scan_cursor);
+  /*
+  LOG_DEBUG(
+      "Transaction[%ld] scan_cursor.block_id_=%d, cached_block.block_id_=%d",
+      txn_ctx->transaction_id_, scan_cursor.block_id_,
+      table_scan_cached_block_->block_id_);
+  */
 
-  TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
+  VersionChainHead *vchain_head =
+      scan_cursor.current_block_->get_vchain_head(&scan_cursor);
+
   int ret = txn_ctx->mvto_read_version_chain(*vchain_head, read_own,
                                              scan_cursor.record_);
   if (ret == FULGUR_ABORT || ret == FULGUR_RETRY) {
@@ -170,7 +192,8 @@ void Table::build_index(const KeyInfo &keyinfo, threadinfo &ti) {
 void Table::insert_record_to_index(uint32_t idx, VersionChainHead *vchain_head,
                                    ThreadContext *thd_ctx) {
   Key key;
-  indexes_[idx]->build_key(vchain_head->get_latest_record_payload(), key, thd_ctx);
+  indexes_[idx]->build_key(vchain_head->get_latest_record_payload(), key,
+                           thd_ctx);
   indexes_[idx]->put(key, vchain_head, *thd_ctx->ti_);
 }
 
@@ -189,11 +212,11 @@ void Table::insert_record_to_index(VersionChainHead *vchain_head,
   @retval false: key does not exist
 */
 int Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
-                                  ThreadContext &thd_ctx, bool read_own) {
+                                 ThreadContext &thd_ctx, bool read_own) {
   VersionChainHead *vchain_head = nullptr;
   bool found = indexes_[idx]->get(key, vchain_head, *thd_ctx.ti_);
   if (!found) {
-    //LOG_DEBUG("do not find in index");
+    // LOG_DEBUG("do not find in index");
     return FULGUR_KEY_NOT_EXIST;
   }
 
@@ -207,11 +230,10 @@ int Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
   return ret;
 }
 
-int Table::index_scan_range_first(uint32_t idx, const Key &key,
-                                   Record *&record, bool emit_firstkey,
-                                   scan_stack_type &scan_stack,
-                                   ThreadContext &thd_ctx,
-                                   bool read_own) const {
+int Table::index_scan_range_first(uint32_t idx, const Key &key, Record *&record,
+                                  bool emit_firstkey,
+                                  scan_stack_type &scan_stack,
+                                  ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   scan_stack.reset();
 
@@ -237,8 +259,8 @@ int Table::index_scan_range_first(uint32_t idx, const Key &key,
 }
 
 int Table::index_scan_range_next(uint32_t idx, Record *&record,
-                                  scan_stack_type &scan_stack,
-                                  ThreadContext &thd_ctx, bool read_own) const {
+                                 scan_stack_type &scan_stack,
+                                 ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   bool found =
       indexes_[idx]->scan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
@@ -265,10 +287,10 @@ int Table::index_scan_range_next(uint32_t idx, Record *&record,
 }
 
 int Table::index_rscan_range_first(uint32_t idx, const Key &key,
-                                    Record *&record, bool emit_firstkey,
-                                    scan_stack_type &scan_stack,
-                                    ThreadContext &thd_ctx,
-                                    bool read_own) const {
+                                   Record *&record, bool emit_firstkey,
+                                   scan_stack_type &scan_stack,
+                                   ThreadContext &thd_ctx,
+                                   bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   scan_stack.reset();
 
@@ -295,9 +317,8 @@ int Table::index_rscan_range_first(uint32_t idx, const Key &key,
 }
 
 int Table::index_rscan_range_next(uint32_t idx, Record *&record,
-                                   scan_stack_type &scan_stack,
-                                   ThreadContext &thd_ctx,
-                                   bool read_own) const {
+                                  scan_stack_type &scan_stack,
+                                  ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   bool found =
       indexes_[idx]->rscan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
@@ -325,10 +346,9 @@ int Table::index_rscan_range_next(uint32_t idx, Record *&record,
 }
 
 int Table::index_prefix_key_search(uint32_t idx, const Key &key,
-                                    Record *&record,
-                                    scan_stack_type &scan_stack,
-                                    ThreadContext &thd_ctx,
-                                    bool read_own) const {
+                                   Record *&record, scan_stack_type &scan_stack,
+                                   ThreadContext &thd_ctx,
+                                   bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   scan_stack.reset();
 
@@ -340,7 +360,8 @@ int Table::index_prefix_key_search(uint32_t idx, const Key &key,
 
   Key current_key = scan_stack.get_current_key().full_string();
   if (current_key.less_than(key)) {
-    return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx, read_own);
+    return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx,
+                                    read_own);
   } else if (!current_key.has_prefix(key)) {
     return FULGUR_KEY_NOT_EXIST;
   }
@@ -367,10 +388,10 @@ int Table::index_prefix_key_search(uint32_t idx, const Key &key,
 }
 
 int Table::index_prefix_search_next(uint32_t idx, const Key &key,
-                                     Record *&record,
-                                     scan_stack_type &scan_stack,
-                                     ThreadContext &thd_ctx,
-                                     bool read_own) const {
+                                    Record *&record,
+                                    scan_stack_type &scan_stack,
+                                    ThreadContext &thd_ctx,
+                                    bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
 
   // found=true means scan has not reached the end
@@ -393,8 +414,10 @@ int Table::index_prefix_search_next(uint32_t idx, const Key &key,
   } else if (ret == FULGUR_SUCCESS) {
     return ret;
   } else if (ret == FULGUR_INVISIBLE_VERSION || ret == FULGUR_DELETED_VERSION) {
-    LOG_DEBUG("Transaction[%lu], read version chain fail, vchain_head:%p", txn_ctx->transaction_id_, vchain_head);
-    return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx, read_own);
+    LOG_DEBUG("Transaction[%lu], read version chain fail, vchain_head:%p",
+              txn_ctx->transaction_id_, vchain_head);
+    return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx,
+                                    read_own);
   } else {
     assert(false);
   }
@@ -484,6 +507,7 @@ RecordBlock *Table::get_record_block(uint32_t block_id) {
   RecordBlock *block = nullptr;
   bool ret = record_blocks_.Find(block_id, block);
   assert(ret == true);
+  assert(block->block_id_ == block_id);
   (void)ret;
   return block;
 }
