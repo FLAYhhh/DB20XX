@@ -417,6 +417,8 @@ int ha_fulgurdb::index_read_map(uchar *mysql_record, const uchar *key,
                                fulgur_table_->get_schema());
     current_record_ = record;
     return 0;
+  } else if (found == fulgurdb::FULGUR_ABORT) {
+    return HA_ERR_GENERIC;
   } else
     return HA_ERR_KEY_NOT_FOUND;
 }

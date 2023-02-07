@@ -220,7 +220,8 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
   while (version_iter != nullptr) {
     // Rewrite start
     // traverse to a visible version without lock
-    if (transaction_id_ < version_iter->header_.begin_ts_) {
+    if (transaction_id_ != version_iter->header_.txn_id_ &&
+        transaction_id_ < version_iter->header_.begin_ts_) {
       version_iter = version_iter->header_.older_version_;
       continue;
     }
