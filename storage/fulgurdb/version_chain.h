@@ -26,12 +26,12 @@ class VersionChainHeadBlock {
   VersionChainHead *get_vchain_head(TableScanCursor *scan_cursor);
 
  public:
-  static const uint32_t RECORD_PTR_CAPACITY = 1024;
+  static const uint32_t ENTRY_CAPACITY = 1024;
 
  private:
   uint32_t block_id_ = 0;
   std::atomic<uint32_t> valid_entry_num_ = 0;
-  VersionChainHead entries_[RECORD_PTR_CAPACITY];
+  VersionChainHead entries_[ENTRY_CAPACITY];
 };
 
 }  // namespace fulgurdb

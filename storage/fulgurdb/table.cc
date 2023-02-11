@@ -117,8 +117,9 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
   assert(scan_cursor.current_block_ != nullptr);
 
   // jump to next useful block
-  while (scan_cursor.idx_in_block_ ==
-         scan_cursor.current_block_->valid_entry_num_.load()) {
+  while (scan_cursor.idx_in_block_ >= VersionChainHeadBlock::ENTRY_CAPACITY ||
+         scan_cursor.idx_in_block_ ==
+             scan_cursor.current_block_->valid_entry_num_.load()) {
     // have reached the end of current block, jump to next
     scan_cursor.block_id_ += 1;
     scan_cursor.idx_in_block_ = 0;

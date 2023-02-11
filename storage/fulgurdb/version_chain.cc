@@ -15,14 +15,20 @@ void VersionChainHead::init() { latest_record_ = nullptr; }
 
 int VersionChainHeadBlock::alloc_vchain_head(VersionChainHead *&vchain_head) {
   uint32_t offset = valid_entry_num_.fetch_add(1, std::memory_order_relaxed);
-  if (offset >= RECORD_PTR_CAPACITY) return FULGUR_BLOCK_FULL;
-  vchain_head = &entries_[offset];
-
-  return FULGUR_SUCCESS;
+  // assert(valid_entry_num_.load() <= ENTRY_CAPACITY);
+  // in multi-thread cases, valid_entry_num_ may exceed ENTRY_CAPACITY;
+  if (offset >= ENTRY_CAPACITY) {
+    vchain_head = nullptr;
+    return FULGUR_BLOCK_FULL;
+  } else {
+    vchain_head = &entries_[offset];
+    vchain_head->init();
+    return FULGUR_SUCCESS;
+  }
 }
 
 bool VersionChainHeadBlock::is_last_vchain_head(VersionChainHead *vchain_head) {
-  if (vchain_head == &entries_[RECORD_PTR_CAPACITY - 1])
+  if (vchain_head == &entries_[ENTRY_CAPACITY - 1])
     return true;
   else
     return false;
