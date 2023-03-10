@@ -10,6 +10,7 @@
 #include "table.h"
 #include "thread_context.h"
 #include "version_chain.h"
+#include "cstdlib"
 namespace fulgurdb {
 
 //======================public member function=========================
@@ -283,6 +284,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     }
 
     LOG_ERROR("concurrent exception path");
+    exit(1);
     version_iter->unlock_header();
     return FULGUR_RETRY;
   }
@@ -298,7 +300,32 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
   Record *version_iter = vchain_head.latest_record_;
   version_iter->lock_header();
   // a commited version, but not visible
-  if (version_iter->get_begin_timestamp() != MAX_TIMESTAMP &&
+  if (version_iter->get_transaction_id() != INVALID_TRANSACTION_ID) {
+    if (version_iter->get_transaction_id() < transaction_id_) {
+      LOG_DEBUG(
+          "Transaction[%lu]: latest version is owned by older "
+          "transaction[txn_id_:%lu], cannot own, retry",
+          transaction_id_, version_iter->get_transaction_id());
+      version_iter->unlock_header();
+      return FULGUR_RETRY;
+    } else if (transaction_id_ < version_iter->get_transaction_id()) {
+      LOG_DEBUG(
+          "Transaction[%lu]: latest version is owned by newer "
+          "transaction[%lu], cannot own, fail",
+          transaction_id_, version_iter->get_transaction_id());
+      version_iter->unlock_header();
+      return FULGUR_ABORT;
+    } else {
+      assert(transaction_id_ == version_iter->get_transaction_id());
+      version_iter->unlock_header();
+      if (version_iter->get_newer_version() != nullptr) {
+        record = version_iter->get_newer_version();
+      } else {
+        record = version_iter;
+      }
+      return FULGUR_SUCCESS;
+    }
+  } else if (version_iter->get_begin_timestamp() != MAX_TIMESTAMP &&
       transaction_id_ < version_iter->get_begin_timestamp()) {
     LOG_DEBUG(
         "Latest version is not visible, transaction_id_:%lu, begin_ts_:%lu",
@@ -334,34 +361,12 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
       return FULGUR_SUCCESS;
     }
     // latest version, but not free
-  } else if (version_iter->get_transaction_id() != INVALID_TRANSACTION_ID) {
-    if (version_iter->get_transaction_id() < transaction_id_) {
-      LOG_DEBUG(
-          "Transaction[%lu]: latest version is owned by older "
-          "transaction[txn_id_:%lu], cannot own, retry",
-          transaction_id_, version_iter->get_transaction_id());
-      version_iter->unlock_header();
-      return FULGUR_RETRY;
-    } else if (transaction_id_ < version_iter->get_transaction_id()) {
-      LOG_DEBUG(
-          "Transaction[%lu]: latest version is owned by newer "
-          "transaction[%lu], cannot own, fail",
-          transaction_id_, version_iter->get_transaction_id());
-      version_iter->unlock_header();
-      return FULGUR_ABORT;
-    } else {
-      assert(transaction_id_ == version_iter->get_transaction_id());
-      version_iter->unlock_header();
-      if (version_iter->get_newer_version() != nullptr) {
-        record = version_iter->get_newer_version();
-      } else {
-        record = version_iter;
-      }
-      return FULGUR_SUCCESS;
-    }
   }
   // panic: should not reach here
+  LOG_ERROR("Panic, should not go here.");
+  LOG_ERROR("current_txn:%lu, txn_id:%lu, begin_ts:%lu, end_ts:%lu", transaction_id_, version_iter->get_transaction_id(), version_iter->get_begin_timestamp(), version_iter->get_end_timestamp());
   assert(false);
+  exit(1);
   return FULGUR_RETRY;
 }
 
