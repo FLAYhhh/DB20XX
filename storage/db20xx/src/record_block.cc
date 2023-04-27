@@ -11,11 +11,11 @@ bool RecordBlock::is_last_record(const Record *record) {
 
 int RecordBlock::alloc_record(Record *&record) {
   uint32_t offset = valid_record_num_.fetch_add(1, std::memory_order_relaxed);
-  if (offset >= record_capacity_) return FULGUR_BLOCK_FULL;
+  if (offset >= record_capacity_) return DB20XX_BLOCK_FULL;
   record = reinterpret_cast<Record *>(records_data_ + offset * record_length_);
   record->init();
 
-  return FULGUR_SUCCESS;
+  return DB20XX_SUCCESS;
 }
 
 void RecordBlock::get_record(TableScanCursor *scan_cursor) {

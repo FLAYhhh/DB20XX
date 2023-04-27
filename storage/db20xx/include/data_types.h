@@ -47,8 +47,8 @@ enum RecordVersionVisibility {
 
 
 // FIXME: 当前设置的限制没有什么依据
-constexpr uint32_t FULGUR_MAX_KEYS = 255;
-constexpr uint32_t FULGUR_MAX_KEY_PARTS = 255;
-constexpr uint32_t FULGUR_MAX_KEY_LENGTH = 255;
+constexpr uint32_t DB20XX_MAX_KEYS = 255;
+constexpr uint32_t DB20XX_MAX_KEY_PARTS = 255;
+constexpr uint32_t DB20XX_MAX_KEY_LENGTH = 255;
 
 }

@@ -20,6 +20,6 @@
 @param form SL层TABLE的元数据
 @param schema SE层table的schema(colunme type等信息)
 */
-void generate_fulgur_schema(TABLE *form, db20xx::Schema &schema);
+void generate_db20xx_schema(TABLE *form, db20xx::Schema &schema);
 db20xx::threadinfo_type *get_threadinfo();
 db20xx::ThreadContext *get_thread_ctx();

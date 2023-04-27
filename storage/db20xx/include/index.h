@@ -108,7 +108,7 @@ typedef db20xx_masstree_params nodeparam_type;
 typedef scanstackelt<nodeparam_type> scan_stack_type;
 
 class MasstreeIndex : public Index {
-  typedef basic_table<db20xx_masstree_params> fulgur_masstree_type;
+  typedef basic_table<db20xx_masstree_params> db20xx_masstree_type;
   typedef typename db20xx_masstree_params::value_type leafvalue_type;
   friend class Table;
 
@@ -132,7 +132,7 @@ class MasstreeIndex : public Index {
   */
   bool put(const Key &key, VersionChainHead *vchain_head,
            threadinfo &ti) override {
-    typename fulgur_masstree_type::cursor_type lp(masstree_, key);
+    typename db20xx_masstree_type::cursor_type lp(masstree_, key);
     bool found = lp.find_insert(ti);
     if (!found) {
       ti.observe_phantoms(lp.node());
@@ -153,7 +153,7 @@ class MasstreeIndex : public Index {
   */
   bool get(const Key &key, VersionChainHead *&vchain_head,
            threadinfo &ti) const override {
-    typename fulgur_masstree_type::unlocked_cursor_type lp(masstree_, key);
+    typename db20xx_masstree_type::unlocked_cursor_type lp(masstree_, key);
     bool found = lp.find_unlocked(ti);
     if (found) vchain_head = lp.value();
 
@@ -226,7 +226,7 @@ class MasstreeIndex : public Index {
   }
 
  private:
-  fulgur_masstree_type masstree_;
+  db20xx_masstree_type masstree_;
 };
 
 }  // namespace db20xx

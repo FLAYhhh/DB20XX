@@ -71,7 +71,7 @@ class ha_db20xx : public handler {
   DB20XX_share *share;        ///< Shared lock info
   DB20XX_share *get_share();  ///< Get the share
 
-  db20xx::Table *fulgur_table_;
+  db20xx::Table *db20xx_table_;
 
   /**
      for sequential scan
@@ -106,7 +106,7 @@ class ha_db20xx : public handler {
   /** @brief
     The name that will be used for display purposes.
    */
-  const char *table_type() const override { return "FULGURDB"; }
+  const char *table_type() const override { return "DB20XXDB"; }
 
   /**
     Replace key algorithm with one supported by SE, return the default key
@@ -170,7 +170,7 @@ class ha_db20xx : public handler {
     support indexes.
    */
   uint max_supported_keys() const override {
-    return reinterpret_cast<uint>(db20xx::FULGUR_MAX_KEYS);
+    return reinterpret_cast<uint>(db20xx::DB20XX_MAX_KEYS);
   }
 
   /** @brief
@@ -183,7 +183,7 @@ class ha_db20xx : public handler {
     support indexes.
    */
   uint max_supported_key_parts() const override {
-    return reinterpret_cast<uint>(db20xx::FULGUR_MAX_KEY_PARTS);
+    return reinterpret_cast<uint>(db20xx::DB20XX_MAX_KEY_PARTS);
   }
 
   /** @brief
@@ -196,7 +196,7 @@ class ha_db20xx : public handler {
     support indexes.
    */
   uint max_supported_key_length() const override {
-    return reinterpret_cast<uint>(db20xx::FULGUR_MAX_KEY_LENGTH);
+    return reinterpret_cast<uint>(db20xx::DB20XX_MAX_KEY_LENGTH);
   }
 
   /** @brief
@@ -313,6 +313,6 @@ class ha_db20xx : public handler {
                                                ///
  private:
   void build_key_from_mysql_key(const uchar *mysql_key, key_part_map keypart_map,
-                                db20xx::Key &fulgur_key,
+                                db20xx::Key &db20xx_key,
                                 bool &full_key_search);
 };

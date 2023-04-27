@@ -29,7 +29,7 @@
 
   @details
   Once this is done, MySQL will let you create tables with:<br>
-  CREATE TABLE \<table name\> (...) ENGINE=FULGURDB;
+  CREATE TABLE \<table name\> (...) ENGINE=DB20XXDB;
 
   The db20xx storage engine is set up to use table locks. It
   implements an db20xx "SHARE" that is inserted into a hash by table
@@ -41,7 +41,7 @@
   of this file.
 
   @note
-  When you create an FULGURDB table, the MySQL Server creates a table .frm
+  When you create an DB20XXDB table, the MySQL Server creates a table .frm
   (format) file in the database directory, using the table name as the file
   name as is customary with MySQL. No other files are created. To get an idea
   of what occurs, here is an db20xx select that would do a scan of an entire
@@ -213,8 +213,8 @@ int ha_db20xx::open(const char *name, int, uint, const dd::Table *) {
   if (database == nullptr)
     return HA_ERR_NO_SUCH_TABLE;  // 是否存在类似于no such db的error code？
 
-  fulgur_table_ = database->get_table(table_name);
-  if (fulgur_table_ == nullptr) return HA_ERR_NO_SUCH_TABLE;
+  db20xx_table_ = database->get_table(table_name);
+  if (db20xx_table_ == nullptr) return HA_ERR_NO_SUCH_TABLE;
 
   return 0;
 }
@@ -257,10 +257,10 @@ int ha_db20xx::close(void) {
 int ha_db20xx::write_row(uchar *sl_record) {
   DBUG_TRACE;
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
-  int ret = fulgur_table_->insert_record_from_mysql((char *)sl_record, thd_ctx);
-  if (ret == db20xx::FULGUR_KEY_EXIST)
+  int ret = db20xx_table_->insert_record_from_mysql((char *)sl_record, thd_ctx);
+  if (ret == db20xx::DB20XX_KEY_EXIST)
     return HA_ERR_FOUND_DUPP_KEY;
-  else if (ret == db20xx::FULGUR_ABORT)
+  else if (ret == db20xx::DB20XX_ABORT)
     return HA_ERR_GENERIC;
 
   return 0;
@@ -288,7 +288,7 @@ int ha_db20xx::update_row(const uchar *old_row, uchar *new_row) {
   (void)old_row;
   DBUG_TRACE;
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
-  fulgur_table_->update_record_from_mysql(current_record_, (char *)new_row,
+  db20xx_table_->update_record_from_mysql(current_record_, (char *)new_row,
                                           thd_ctx);
   return 0;
 }
@@ -316,14 +316,14 @@ int ha_db20xx::update_row(const uchar *old_row, uchar *new_row) {
 int ha_db20xx::delete_row(const uchar *) {
   DBUG_TRACE;
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
-  fulgur_table_->delete_record(current_record_, thd_ctx);
+  db20xx_table_->delete_record(current_record_, thd_ctx);
 
   return 0;
 }
 
 void ha_db20xx::build_key_from_mysql_key(const uchar *mysql_key,
                                            key_part_map keypart_map,
-                                           db20xx::Key &fulgur_key,
+                                           db20xx::Key &db20xx_key,
                                            bool &full_key_search) {
   /* works only with key prefixes */
   assert(((keypart_map + 1) & keypart_map) == 0);
@@ -361,7 +361,7 @@ void ha_db20xx::build_key_from_mysql_key(const uchar *mysql_key,
     used_key_part_num++;
   }
 
-  fulgur_key.assign((const char *)materized_key, key_len);
+  db20xx_key.assign((const char *)materized_key, key_len);
   full_key_search = (used_key_part_num == full_key_part_num ? true : false);
 }
 
@@ -378,32 +378,32 @@ int ha_db20xx::index_read_map(uchar *mysql_record, const uchar *key,
   bool full_key_search = true;
   db20xx::Record *record = nullptr;
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
-  int found = db20xx::FULGUR_SUCCESS;
+  int found = db20xx::DB20XX_SUCCESS;
   scan_direction_ = find_flag;  // flag的定义见include/my_base.h
   build_key_from_mysql_key(key, keypart_map, index_key_, full_key_search);
 
   if (!full_key_search) {
     assert(find_flag == HA_READ_KEY_EXACT);
-    found = fulgur_table_->index_prefix_key_search(
+    found = db20xx_table_->index_prefix_key_search(
         active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_KEY_EXACT) {
-    found = fulgur_table_->get_record_from_index(
+    found = db20xx_table_->get_record_from_index(
         active_index, index_key_, record, *thd_ctx, read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_NEXT) {
-    found = fulgur_table_->index_scan_range_first(
+    found = db20xx_table_->index_scan_range_first(
         active_index, index_key_, record, true, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_AFTER_KEY) {
-    found = fulgur_table_->index_scan_range_first(
+    found = db20xx_table_->index_scan_range_first(
         active_index, index_key_, record, false, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_PREV) {
-    found = fulgur_table_->index_rscan_range_first(
+    found = db20xx_table_->index_rscan_range_first(
         active_index, index_key_, record, true, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_BEFORE_KEY) {
-    found = fulgur_table_->index_rscan_range_first(
+    found = db20xx_table_->index_rscan_range_first(
         active_index, index_key_, record, false, masstree_scan_stack_, *thd_ctx,
         read_own_statement_);
   } else {
@@ -411,12 +411,12 @@ int ha_db20xx::index_read_map(uchar *mysql_record, const uchar *key,
     assert(false);
   }
 
-  if (found == db20xx::FULGUR_SUCCESS) {
+  if (found == db20xx::DB20XX_SUCCESS) {
     record->load_data_to_mysql((char *)mysql_record,
-                               fulgur_table_->get_schema());
+                               db20xx_table_->get_schema());
     current_record_ = record;
     return 0;
-  } else if (found == db20xx::FULGUR_ABORT) {
+  } else if (found == db20xx::DB20XX_ABORT) {
     return HA_ERR_GENERIC;
   } else
     return HA_ERR_KEY_NOT_FOUND;
@@ -435,18 +435,18 @@ int ha_db20xx::index_next(uchar *mysql_record) {
   switch (scan_direction_) {
     case HA_READ_KEY_OR_NEXT:
     case HA_READ_AFTER_KEY:
-      found = fulgur_table_->index_scan_range_next(
+      found = db20xx_table_->index_scan_range_next(
           active_index, record, masstree_scan_stack_, *thd_ctx,
           read_own_statement_);
       break;
     case HA_READ_KEY_OR_PREV:
     case HA_READ_BEFORE_KEY:
-      found = fulgur_table_->index_rscan_range_next(
+      found = db20xx_table_->index_rscan_range_next(
           active_index, record, masstree_scan_stack_, *thd_ctx,
           read_own_statement_);
       break;
     case HA_READ_KEY_EXACT:
-      found = fulgur_table_->index_prefix_search_next(
+      found = db20xx_table_->index_prefix_search_next(
           active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
           read_own_statement_);
       break;
@@ -456,9 +456,9 @@ int ha_db20xx::index_next(uchar *mysql_record) {
       break;
   }
 
-  if (found == db20xx::FULGUR_SUCCESS) {
+  if (found == db20xx::DB20XX_SUCCESS) {
     record->load_data_to_mysql((char *)mysql_record,
-                               fulgur_table_->get_schema());
+                               db20xx_table_->get_schema());
     current_record_ = record;
     return 0;
   } else
@@ -555,30 +555,30 @@ int ha_db20xx::rnd_end() {
 */
 int ha_db20xx::rnd_next(uchar *sl_record) {
   DBUG_TRACE;
-  int ret = db20xx::FULGUR_SUCCESS;
+  int ret = db20xx::DB20XX_SUCCESS;
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
 
-  ret = fulgur_table_->table_scan_get(seq_scan_cursor_, read_own_statement_,
+  ret = db20xx_table_->table_scan_get(seq_scan_cursor_, read_own_statement_,
                                       thd_ctx);
-  if (ret == db20xx::FULGUR_END_OF_TABLE) return HA_ERR_END_OF_FILE;
+  if (ret == db20xx::DB20XX_END_OF_TABLE) return HA_ERR_END_OF_FILE;
 
-  if (ret == db20xx::FULGUR_RETRY || ret == db20xx::FULGUR_FAIL
-      || ret == db20xx::FULGUR_ABORT) {
+  if (ret == db20xx::DB20XX_RETRY || ret == db20xx::DB20XX_FAIL
+      || ret == db20xx::DB20XX_ABORT) {
     // db20xx::LOG_DEBUG("can not read a visible version, abort");
     return HA_ERR_GENERIC;
   }
 
-  if (ret == db20xx::FULGUR_INVISIBLE_VERSION ||
-      ret == db20xx::FULGUR_DELETED_VERSION) {
+  if (ret == db20xx::DB20XX_INVISIBLE_VERSION ||
+      ret == db20xx::DB20XX_DELETED_VERSION) {
     seq_scan_cursor_.inc_cursor();
     return rnd_next(sl_record);
   }
 
-  assert(ret == db20xx::FULGUR_SUCCESS);
+  assert(ret == db20xx::DB20XX_SUCCESS);
 
   // At this point, we've got a visible record version
   seq_scan_cursor_.record_->load_data_to_mysql((char *)sl_record,
-                                               fulgur_table_->get_schema());
+                                               db20xx_table_->get_schema());
   table->set_found_row();
   seq_scan_cursor_.inc_cursor();
   current_record_ = seq_scan_cursor_.record_;
@@ -909,7 +909,7 @@ int ha_db20xx::create(const char *name, TABLE *form,
   uint32_t sl_row_null_bytes = table->s->null_bytes;
   db20xx::Schema schema;
   schema.set_null_byte_length(sl_row_null_bytes);
-  generate_fulgur_schema(form, schema);
+  generate_db20xx_schema(form, schema);
 
   auto fgdb_table = db->create_table(fgdb_table_name, schema);
   if (fgdb_table == nullptr) {
@@ -951,7 +951,7 @@ int DB20XX_commit(handlerton *hton, THD *thd, bool all) {
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
   db20xx::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
 
-  if (txn_ctx->get_transaction_status() == db20xx::FULGUR_TRANSACTION_ABORT) {
+  if (txn_ctx->get_transaction_status() == db20xx::DB20XX_TRANSACTION_ABORT) {
     txn_ctx->abort();
     return HA_ERR_LOCK_DEADLOCK;  // DB_FORCE_ABORT: same as innodb
   }

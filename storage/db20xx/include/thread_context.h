@@ -30,7 +30,7 @@ class ThreadContext {
   TransactionContext txn_ctx_;
 
   // avoid malloc when build temporary index key
-  char key_container_[FULGUR_MAX_KEY_LENGTH];
+  char key_container_[DB20XX_MAX_KEY_LENGTH];
 };
 
 }  // namespace db20xx
