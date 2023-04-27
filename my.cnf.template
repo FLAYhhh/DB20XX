@@ -9,3 +9,9 @@ skip-host-cache
 skip-name-resolve
 skip-ssl
 max-connections = 10000
+socket=<USER>/usr/.db20xx/mysql.sock
+mysqlx_socket=<USER>/usr/.db20xx/mysqlx.sock
+
+[client]
+port=3336
+socket=<USER>/usr/.db20xx/mysql.sock
