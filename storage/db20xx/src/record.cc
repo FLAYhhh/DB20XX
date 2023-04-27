@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <cstring>
 #include "data_types.h"
-namespace fulgurdb {
+namespace db20xx {
 //======================manipulate record header===============================
 void Record::init() {
   header_.latch_.init();
@@ -52,24 +52,24 @@ char *Record::get_payload() { return payload_; }
 RecordHeader *Record::get_header() { return &header_; }
 
 void Record::load_data_from_mysql(char *mysql_record, const Schema &schema) {
-  char *fulgur_row_data = payload_;
+  char *db20xx_row_data = payload_;
 
   // store null bytes
   uint32_t null_bytes = schema.get_null_byte_length();
-  memcpy(fulgur_row_data, mysql_record, null_bytes);
-  fulgur_row_data += null_bytes;
+  memcpy(db20xx_row_data, mysql_record, null_bytes);
+  db20xx_row_data += null_bytes;
   mysql_record += null_bytes;
 
   // store fields
   for (uint32_t i = 0; i < schema.field_num(); i++) {
     const Field &field = schema.get_field(i);
-    // 以inline方式存储在fulgurdb中的field，在mysql中一定是定长的。
+    // 以inline方式存储在db20xx中的field，在mysql中一定是定长的。
     // create_table时，schema中就存储了field长度的信息。
     // insert时，来自mysql的row data中，该field一定是符合定长约定的。
     if (field.store_inline()) {
       uint32_t data_bytes = field.get_data_bytes();
-      memcpy(fulgur_row_data, mysql_record, data_bytes);
-      fulgur_row_data += data_bytes;
+      memcpy(db20xx_row_data, mysql_record, data_bytes);
+      db20xx_row_data += data_bytes;
       mysql_record += data_bytes;
     } else if (field.get_field_type() == VARCHAR_ID) {
       uint32_t length_bytes = field.get_mysql_length_bytes();
@@ -77,54 +77,54 @@ void Record::load_data_from_mysql(char *mysql_record, const Schema &schema) {
       uint32_t actual_data_length = 0;
       if (length_bytes == 1) {
         actual_data_length = *(uint8_t *)(mysql_record);
-        *reinterpret_cast<uint8_t *>(fulgur_row_data) =
+        *reinterpret_cast<uint8_t *>(db20xx_row_data) =
             *reinterpret_cast<uint8_t *>(mysql_record);
       } else if (length_bytes == 2) {
         actual_data_length = *(uint16_t *)(mysql_record);
-        *reinterpret_cast<uint16_t *>(fulgur_row_data) =
+        *reinterpret_cast<uint16_t *>(db20xx_row_data) =
             *reinterpret_cast<uint16_t *>(mysql_record);
       } else {
-        fulgurdb::LOG_ERROR("invalid mysql length bytes");
+        db20xx::LOG_ERROR("invalid mysql length bytes");
       }
-      fulgur_row_data += length_bytes;
+      db20xx_row_data += length_bytes;
       mysql_record += length_bytes;
       char *actual_data = (char *)malloc(actual_data_length);
       memcpy(actual_data, mysql_record, actual_data_length);
       // non-inline存储的field中，只存储真实数据的指针
-      *reinterpret_cast<char **>(fulgur_row_data) = actual_data;
+      *reinterpret_cast<char **>(db20xx_row_data) = actual_data;
 
-      fulgur_row_data += 8;
+      db20xx_row_data += 8;
       mysql_record += field.mysql_pack_length_ - length_bytes;
     } else if (field.get_field_type() == BLOB_ID) {
       uint32_t length_bytes = field.get_mysql_length_bytes();
       // blob's length_bytes的取值可能是{1,2,3,4},见mysql官方文档
       if (length_bytes < 1 || 4 < length_bytes){
-        fulgurdb::LOG_ERROR("invalid mysql length bytes");
+        db20xx::LOG_ERROR("invalid mysql length bytes");
       }
       uint32_t actual_data_length = 0;
-      memcpy(fulgur_row_data, mysql_record, length_bytes);
+      memcpy(db20xx_row_data, mysql_record, length_bytes);
       memcpy(&actual_data_length, mysql_record, length_bytes);
 
-      fulgur_row_data += length_bytes;
+      db20xx_row_data += length_bytes;
       mysql_record += length_bytes;
       char *mysql_blob_ptr = *reinterpret_cast<char **>(mysql_record);
       char *actual_data = (char *)malloc(actual_data_length);
       memcpy(actual_data, mysql_blob_ptr, actual_data_length);
       // non-inline存储的field中，只存储真实数据的指针
-      *reinterpret_cast<char **>(fulgur_row_data) = actual_data;
+      *reinterpret_cast<char **>(db20xx_row_data) = actual_data;
 
-      fulgur_row_data += sizeof(char *);
+      db20xx_row_data += sizeof(char *);
       mysql_record += sizeof(char *);
     }
   }
 }
 
 void Record::load_data_to_mysql(char *mysql_record, const Schema &schema) {
-  char *fulgur_row_data = payload_;
+  char *db20xx_row_data = payload_;
   // restore null bytes
   uint32_t null_bytes = schema.get_null_byte_length();
-  memcpy(mysql_record, fulgur_row_data, null_bytes);
-  fulgur_row_data += null_bytes;
+  memcpy(mysql_record, db20xx_row_data, null_bytes);
+  db20xx_row_data += null_bytes;
   mysql_record += null_bytes;
 
   // restore fields
@@ -132,8 +132,8 @@ void Record::load_data_to_mysql(char *mysql_record, const Schema &schema) {
     const Field &field = schema.get_field(i);
     if (field.store_inline()) {
       uint32_t data_bytes = field.get_data_bytes();
-      memcpy(mysql_record, fulgur_row_data, data_bytes);
-      fulgur_row_data += data_bytes;
+      memcpy(mysql_record, db20xx_row_data, data_bytes);
+      db20xx_row_data += data_bytes;
       mysql_record += data_bytes;
     } else {
       if (field.get_field_type() == VARCHAR_ID) {
@@ -141,43 +141,43 @@ void Record::load_data_to_mysql(char *mysql_record, const Schema &schema) {
         // length_bytes的取值只可能是1或者2,见mysql官方文档
         uint32_t actual_data_length = 0;
         if (length_bytes == 1) {
-          actual_data_length = *(uint8_t *)(fulgur_row_data);
+          actual_data_length = *(uint8_t *)(db20xx_row_data);
           *reinterpret_cast<uint8_t *>(mysql_record) =
-              *reinterpret_cast<uint8_t *>(fulgur_row_data);
+              *reinterpret_cast<uint8_t *>(db20xx_row_data);
         } else if (length_bytes == 2) {
-          actual_data_length = *(uint16_t *)(fulgur_row_data);
+          actual_data_length = *(uint16_t *)(db20xx_row_data);
           *reinterpret_cast<uint16_t *>(mysql_record) =
-              *reinterpret_cast<uint16_t *>(fulgur_row_data);
+              *reinterpret_cast<uint16_t *>(db20xx_row_data);
         } else {
-          fulgurdb::LOG_ERROR("invalid mysql length bytes");
+          db20xx::LOG_ERROR("invalid mysql length bytes");
         }
-        fulgur_row_data += length_bytes;
+        db20xx_row_data += length_bytes;
         mysql_record += length_bytes;
 
-        char *actual_data = *reinterpret_cast<char **>(fulgur_row_data);
+        char *actual_data = *reinterpret_cast<char **>(db20xx_row_data);
         memcpy(mysql_record, actual_data, actual_data_length);
 
-        fulgur_row_data += 8;
+        db20xx_row_data += 8;
         mysql_record += field.mysql_pack_length_ - length_bytes;
       } else if (field.get_field_type() == BLOB_ID) {
         uint32_t length_bytes = field.get_mysql_length_bytes();
         // blob's length_bytes的取值可能是{1,2,3,4},见mysql官方文档
         uint32_t actual_data_length = 0;
         if (length_bytes < 1 || 4 < length_bytes) {
-          fulgurdb::LOG_ERROR("invalid mysql length bytes");
+          db20xx::LOG_ERROR("invalid mysql length bytes");
         }
-        memcpy(&actual_data_length, fulgur_row_data, actual_data_length);
-        fulgur_row_data += length_bytes;
+        memcpy(&actual_data_length, db20xx_row_data, actual_data_length);
+        db20xx_row_data += length_bytes;
         mysql_record += length_bytes;
 
         char *mysql_blob_ptr = *reinterpret_cast<char **>(mysql_record);
-        char *actual_data = *reinterpret_cast<char **>(fulgur_row_data);
+        char *actual_data = *reinterpret_cast<char **>(db20xx_row_data);
         memcpy(mysql_blob_ptr, actual_data, actual_data_length);
 
-        fulgur_row_data += sizeof(char *);
+        db20xx_row_data += sizeof(char *);
         mysql_record += sizeof(char *);
       }
     }
   }
 }
-}  // namespace fulgurdb
+}  // namespace db20xx

@@ -11,7 +11,7 @@
 #include "thread_context.h"
 #include "version_chain.h"
 #include "cstdlib"
-namespace fulgurdb {
+namespace db20xx {
 
 //======================public member function=========================
 bool TransactionContext::on_going() { return started_; }
@@ -28,13 +28,13 @@ void TransactionContext::mvto_insert(Record *record, VersionChainHead *vchain_he
   // Alloc version chain head & insert it to index
   uint32_t writer_idx = thd_ctx->get_thread_id() % Table::PARALLEL_WRITER_NUM;
   VersionChainHeadBlock *vchain_head_block = nullptr;
-  int status = FULGUR_SUCCESS;
+  int status = DB20XX_SUCCESS;
 
   if (vchain_head == nullptr) {
     do {
       vchain_head_block = table->vchain_head_allocators_[writer_idx];
       status = vchain_head_block->alloc_vchain_head(vchain_head);
-    } while (status != FULGUR_SUCCESS);
+    } while (status != DB20XX_SUCCESS);
 
     if (vchain_head_block->is_last_vchain_head(vchain_head)) {
       table->vchain_head_allocators_[writer_idx] =
@@ -68,11 +68,11 @@ int TransactionContext::mvto_delete(Record *record, Table *table,
     // the record have been inserted or updated by current transaction
     if (record->get_begin_timestamp() == MAX_TIMESTAMP) {
       record->set_end_timestamp(MIN_TIMESTAMP);
-      return FULGUR_SUCCESS;
+      return DB20XX_SUCCESS;
     } else {
       Record *new_record = nullptr;
       int status = table->alloc_record(new_record, thd_ctx);
-      if (status != FULGUR_SUCCESS) return status;
+      if (status != DB20XX_SUCCESS) return status;
 
       new_record->set_end_timestamp(MIN_TIMESTAMP);
 
@@ -82,13 +82,13 @@ int TransactionContext::mvto_delete(Record *record, Table *table,
       new_record->set_transaction_id(transaction_id_);
       // add_to_delete_set(new_record);
       // add_to_modify_set(record);
-      return FULGUR_SUCCESS;
+      return DB20XX_SUCCESS;
     }
 
   } else {
     // Panic: assume update always own the record (no blind write)
     assert(false);
-    return FULGUR_FAIL;
+    return DB20XX_FAIL;
   }
 }
 
@@ -105,11 +105,11 @@ int TransactionContext::mvto_update(Record *old_record, char *new_mysql_record,
     // current transaction have updated the record
     if (old_record->get_begin_timestamp() == MAX_TIMESTAMP) {
       old_record->load_data_from_mysql(new_mysql_record, table->schema_);
-      return FULGUR_SUCCESS;
+      return DB20XX_SUCCESS;
     } else {
       Record *new_record = nullptr;
       int status = table->alloc_record(new_record, thd_ctx);
-      if (status != FULGUR_SUCCESS) return status;
+      if (status != DB20XX_SUCCESS) return status;
 
       new_record->load_data_from_mysql(new_mysql_record, table->schema_);
 
@@ -119,12 +119,12 @@ int TransactionContext::mvto_update(Record *old_record, char *new_mysql_record,
       new_record->set_transaction_id(transaction_id_);
       // add_to_update_set(old_record);
       // add_to_modify_set(old_record);
-      return FULGUR_SUCCESS;
+      return DB20XX_SUCCESS;
     }
   } else {
     // Panic: assume update always own the record (no blind write)
     assert(false);
-    return FULGUR_FAIL;
+    return DB20XX_FAIL;
   }
 }
 
@@ -132,8 +132,8 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
                                                 bool read_own,
                                                 Record *&record) {
   int retry_time = 0;
-  int ret = FULGUR_RETRY;
-  while (ret == FULGUR_RETRY) {
+  int ret = DB20XX_RETRY;
+  while (ret == DB20XX_RETRY) {
     if (retry_time != 0)
       std::this_thread::sleep_for(std::chrono::microseconds(10));
     if (read_own) {
@@ -144,15 +144,15 @@ int TransactionContext::mvto_read_version_chain(VersionChainHead &vchain_head,
     retry_time++;
   }
 
-  if (ret == FULGUR_RETRY) ret = FULGUR_ABORT;
+  if (ret == DB20XX_RETRY) ret = DB20XX_ABORT;
   return ret;
 }
 
 int TransactionContext::get_transaction_status() {
   if (should_abort_)
-    return FULGUR_TRANSACTION_ABORT;
+    return DB20XX_TRANSACTION_ABORT;
   else
-    return FULGUR_SUCCESS;
+    return DB20XX_SUCCESS;
 }
 
 int TransactionContext::commit() {
@@ -185,7 +185,7 @@ int TransactionContext::commit() {
   // then reset status
   LOG_TRACE("Transaction:%lu commit", transaction_id_);
   reset();
-  return FULGUR_SUCCESS;
+  return DB20XX_SUCCESS;
 }
 
 void TransactionContext::set_abort() { should_abort_ = true; }
@@ -231,11 +231,11 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
     if (version_iter->header_.end_ts_ != MAX_TIMESTAMP) {
       record = version_iter;
       if (version_iter->header_.end_ts_ == MIN_TIMESTAMP) {
-        return FULGUR_DELETED_VERSION;
+        return DB20XX_DELETED_VERSION;
       } else if (transaction_id_ < version_iter->header_.end_ts_) {
-        return FULGUR_SUCCESS;
+        return DB20XX_SUCCESS;
       } else if ( transaction_id_ >= version_iter->header_.end_ts_) {
-        return FULGUR_RETRY;
+        return DB20XX_RETRY;
       } else {
         assert(false);
       }
@@ -252,9 +252,9 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
       }
       record = version_iter;
       if (version_iter->header_.end_ts_ == MIN_TIMESTAMP) {
-        return FULGUR_DELETED_VERSION;
+        return DB20XX_DELETED_VERSION;
       } else {
-        return FULGUR_SUCCESS;
+        return DB20XX_SUCCESS;
       }
     }
 
@@ -264,7 +264,7 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
       update_last_read_ts_if_need(version_iter);
       version_iter->unlock_header();
       record = version_iter;
-      return FULGUR_SUCCESS;
+      return DB20XX_SUCCESS;
     } else {
       // because giveup owership of record at commit time does not hold lock,
       // txn_id_ can be 0 here.
@@ -274,25 +274,25 @@ int TransactionContext::mvto_read_vchain_unown(VersionChainHead &vchain_head,
         LOG_DEBUG("Transaction[%lu]: an older transaction[txn_id_:%lu] is owning the version",
                   transaction_id_, version_iter->get_transaction_id());
         record = version_iter;
-        return FULGUR_RETRY;
+        return DB20XX_RETRY;
       } else if (transaction_id_ < version_iter->header_.txn_id_) {
         update_last_read_ts_if_need(version_iter);
         version_iter->unlock_header();
         record = version_iter;
-        return FULGUR_SUCCESS;
+        return DB20XX_SUCCESS;
       }
     }
 
     LOG_ERROR("concurrent exception path");
     exit(1);
     version_iter->unlock_header();
-    return FULGUR_RETRY;
+    return DB20XX_RETRY;
   }
 
   // No valid version
   LOG_DEBUG("Transaction:%lu: older than all versions in the version chain",
             transaction_id_);
-  return FULGUR_INVISIBLE_VERSION;
+  return DB20XX_INVISIBLE_VERSION;
 }
 
 int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
@@ -307,14 +307,14 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
           "transaction[txn_id_:%lu], cannot own, retry",
           transaction_id_, version_iter->get_transaction_id());
       version_iter->unlock_header();
-      return FULGUR_RETRY;
+      return DB20XX_RETRY;
     } else if (transaction_id_ < version_iter->get_transaction_id()) {
       LOG_DEBUG(
           "Transaction[%lu]: latest version is owned by newer "
           "transaction[%lu], cannot own, fail",
           transaction_id_, version_iter->get_transaction_id());
       version_iter->unlock_header();
-      return FULGUR_ABORT;
+      return DB20XX_ABORT;
     } else {
       assert(transaction_id_ == version_iter->get_transaction_id());
       version_iter->unlock_header();
@@ -323,7 +323,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
       } else {
         record = version_iter;
       }
-      return FULGUR_SUCCESS;
+      return DB20XX_SUCCESS;
     }
   } else if (version_iter->get_begin_timestamp() != MAX_TIMESTAMP &&
       transaction_id_ < version_iter->get_begin_timestamp()) {
@@ -331,19 +331,19 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
         "Latest version is not visible, transaction_id_:%lu, begin_ts_:%lu",
         transaction_id_, version_iter->get_begin_timestamp());
     version_iter->unlock_header();
-    return FULGUR_ABORT;
+    return DB20XX_ABORT;
   } else if (version_iter->get_end_timestamp() == MIN_TIMESTAMP) {
     // a deleted version
     LOG_DEBUG("Latest version is a delete version, cannot own");
     version_iter->unlock_header();
-    return FULGUR_ABORT;
+    return DB20XX_ABORT;
   } else if (version_iter->get_end_timestamp() < transaction_id_) {
     // not the latest version anymore
     LOG_DEBUG(
         "Transaction[%lu]:not the latest version anymore, need retry. end_ts_:%lu",
         transaction_id_, version_iter->get_end_timestamp());
     version_iter->unlock_header();
-    return FULGUR_RETRY;
+    return DB20XX_RETRY;
   } else if (version_iter->get_transaction_id() == INVALID_TRANSACTION_ID) {
     // still the latest version, and free
     if (transaction_id_ < version_iter->get_last_read_timestamp()) {
@@ -351,14 +351,14 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
           "Transaction[%lu]:Latest version has been read by newer transaction, cannot own. last_read_ts_:%lu",
           transaction_id_, version_iter->get_last_read_timestamp());
       version_iter->unlock_header();
-      return FULGUR_ABORT;
+      return DB20XX_ABORT;
     } else {
       version_iter->set_transaction_id(transaction_id_);
       update_last_read_ts_if_need(version_iter);
       version_iter->unlock_header();
       record = version_iter;
       add_to_modify_set(record);
-      return FULGUR_SUCCESS;
+      return DB20XX_SUCCESS;
     }
     // latest version, but not free
   }
@@ -367,7 +367,7 @@ int TransactionContext::mvto_read_vchain_own(VersionChainHead &vchain_head,
   LOG_ERROR("current_txn:%lu, txn_id:%lu, begin_ts:%lu, end_ts:%lu", transaction_id_, version_iter->get_transaction_id(), version_iter->get_begin_timestamp(), version_iter->get_end_timestamp());
   assert(false);
   exit(1);
-  return FULGUR_RETRY;
+  return DB20XX_RETRY;
 }
 
 /**
@@ -391,4 +391,4 @@ void TransactionContext::add_to_modify_set(Record *record) {
   txn_modify_set_.insert(record);
 }
 
-}  // namespace fulgurdb
+}  // namespace db20xx

@@ -27,7 +27,7 @@
 #endif
 #include <inttypes.h>
 
-namespace fulgurdb {
+namespace db20xx {
 // Note that __FILE__ is a special pre-processor macro that we
 // generate for shorter path names using CMake.
 
@@ -179,4 +179,4 @@ inline void outputLogHeader_(const char *file, int line, const char *func,
   ::fprintf(LOG_OUTPUT_STREAM, "%s [%s:%d:%s] %s - ", time_str, file, line,
             func, type);
 }
-} // end of namespace fulgurdb
+} // end of namespace db20xx

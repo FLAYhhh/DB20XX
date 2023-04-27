@@ -14,7 +14,7 @@
 #include "utils.h"
 #include "version_chain.h"
 
-namespace fulgurdb {
+namespace db20xx {
 
 class TableScanCursor {
   friend class Table;
@@ -171,4 +171,4 @@ class Table {
   std::array<VersionChainHeadBlock *, PARALLEL_WRITER_NUM>
       vchain_head_allocators_;
 };
-}  // namespace fulgurdb
+}  // namespace db20xx

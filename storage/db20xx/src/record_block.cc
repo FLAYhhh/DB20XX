@@ -1,6 +1,6 @@
 #include "record_block.h"
 #include "table.h"
-namespace fulgurdb {
+namespace db20xx {
 bool RecordBlock::is_last_record(const Record *record) {
   if ((const char *)record ==
       records_data_ + record_length_ * (record_capacity_ - 1))
@@ -11,11 +11,11 @@ bool RecordBlock::is_last_record(const Record *record) {
 
 int RecordBlock::alloc_record(Record *&record) {
   uint32_t offset = valid_record_num_.fetch_add(1, std::memory_order_relaxed);
-  if (offset >= record_capacity_) return FULGUR_BLOCK_FULL;
+  if (offset >= record_capacity_) return DB20XX_BLOCK_FULL;
   record = reinterpret_cast<Record *>(records_data_ + offset * record_length_);
   record->init();
 
-  return FULGUR_SUCCESS;
+  return DB20XX_SUCCESS;
 }
 
 void RecordBlock::get_record(TableScanCursor *scan_cursor) {
@@ -23,4 +23,4 @@ void RecordBlock::get_record(TableScanCursor *scan_cursor) {
   scan_cursor->record_ = reinterpret_cast<Record *>(
       records_data_ + scan_cursor->idx_in_block_ * record_length_);
 }
-}  // end of namespace fulgurdb
+}  // end of namespace db20xx

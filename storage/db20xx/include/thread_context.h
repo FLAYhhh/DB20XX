@@ -2,7 +2,7 @@
 #include "masstree-beta/kvthread.hh"
 #include "transaction.h"
 
-namespace fulgurdb {
+namespace db20xx {
 
 using namespace Masstree;
 typedef threadinfo threadinfo_type;
@@ -11,7 +11,7 @@ class ThreadContext {
   friend class Table;
   //friend class Index;
   friend class MasstreeIndex;
-  friend class ha_fulgurdb;
+  friend class ha_db20xx;
 
  public:
   ThreadContext(uint64_t thread_id) : thread_id_(thread_id) {
@@ -30,7 +30,7 @@ class ThreadContext {
   TransactionContext txn_ctx_;
 
   // avoid malloc when build temporary index key
-  char key_container_[FULGUR_MAX_KEY_LENGTH];
+  char key_container_[DB20XX_MAX_KEY_LENGTH];
 };
 
-}  // namespace fulgurdb
+}  // namespace db20xx

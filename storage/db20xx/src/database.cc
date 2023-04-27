@@ -1,6 +1,6 @@
 #include "database.h"
 
-namespace fulgurdb {
+namespace db20xx {
 
 bool Database::check_table_existence(const std::string &table_name) {
   if (tables_.find(table_name) != tables_.end())

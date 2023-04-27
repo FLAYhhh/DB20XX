@@ -1,6 +1,6 @@
 #include "engine.h"
 
-namespace fulgurdb {
+namespace db20xx {
 
 #if 0
 Engine& Engine::GetInstance() {

@@ -1,5 +1,5 @@
 #include "utils.h"
 
-namespace fulgurdb {
+namespace db20xx {
 
 }

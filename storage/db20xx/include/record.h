@@ -6,7 +6,7 @@
 #include "utils.h"
 #include "version_chain.h"
 
-namespace fulgurdb {
+namespace db20xx {
 
 class RecordHeader {
  public:
@@ -70,7 +70,7 @@ class RecordHeader {
    * MVCC version chain is a linked list with a fake head.
    * vchain_head_ is the MVCC version chain head.
    *
-   * The value type of Primary Index in fulgurdb is [VersionChainHead *].
+   * The value type of Primary Index in db20xx is [VersionChainHead *].
    */
   VersionChainHead *vchain_head_ = nullptr;
 };
@@ -109,4 +109,4 @@ class Record {
   char payload_[0];  // payload lenght is specified in table
 };
 
-}  // end of namespace fulgurdb
+}  // end of namespace db20xx

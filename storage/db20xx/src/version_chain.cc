@@ -2,7 +2,7 @@
 #include "record.h"
 #include "table.h"
 
-namespace fulgurdb {
+namespace db20xx {
 char *VersionChainHead::get_latest_record_payload() {
   return latest_record_->get_payload();
 }
@@ -19,11 +19,11 @@ int VersionChainHeadBlock::alloc_vchain_head(VersionChainHead *&vchain_head) {
   // in multi-thread cases, valid_entry_num_ may exceed ENTRY_CAPACITY;
   if (offset >= ENTRY_CAPACITY) {
     vchain_head = nullptr;
-    return FULGUR_BLOCK_FULL;
+    return DB20XX_BLOCK_FULL;
   } else {
     vchain_head = &entries_[offset];
     vchain_head->init();
-    return FULGUR_SUCCESS;
+    return DB20XX_SUCCESS;
   }
 }
 
@@ -39,4 +39,4 @@ VersionChainHead *VersionChainHeadBlock::get_vchain_head(TableScanCursor *scan_c
   return &entries_[scan_cursor->idx_in_block_];
 }
 
-}  // namespace fulgurdb
+}  // namespace db20xx

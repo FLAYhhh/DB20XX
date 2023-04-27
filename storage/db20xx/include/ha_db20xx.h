@@ -20,22 +20,22 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-/** @file ha_fulgurdb.h
+/** @file ha_db20xx.h
 
     @brief
-  The ha_fulgurdb engine is a stubbed storage engine for fulgurdb purposes only;
+  The ha_db20xx engine is a stubbed storage engine for db20xx purposes only;
   it does nothing at this point. Its purpose is to provide a source
   code illustration of how to begin writing new storage engines; see also
-  /storage/fulgurdb/ha_fulgurdb.cc.
+  /storage/db20xx/ha_db20xx.cc.
 
     @note
-  Please read ha_fulgurdb.cc before reading this file.
-  Reminder: The fulgurdb storage engine implements all methods that are
+  Please read ha_db20xx.cc before reading this file.
+  Reminder: The db20xx storage engine implements all methods that are
   *required* to be implemented. For a full list of all methods that you can
   implement, see handler.h.
 
    @see
-  /sql/handler.h and /storage/fulgurdb/ha_fulgurdb.cc
+  /sql/handler.h and /storage/db20xx/ha_db20xx.cc
 */
 
 #pragma once
@@ -54,7 +54,7 @@
 
 /** @brief
   Fulgurdb_share is a class that will be shared among all open handlers.
-  This fulgurdb implements the minimum of what you will probably need.
+  This db20xx implements the minimum of what you will probably need.
 */
 class Fulgurdb_share : public Handler_share {
  public:
@@ -66,20 +66,20 @@ class Fulgurdb_share : public Handler_share {
 /** @brief
   Class definition for the storage engine
 */
-class ha_fulgurdb : public handler {
+class ha_db20xx : public handler {
   THR_LOCK_DATA lock;           ///< MySQL lock
   Fulgurdb_share *share;        ///< Shared lock info
   Fulgurdb_share *get_share();  ///< Get the share
 
-  fulgurdb::Table *fulgur_table_;
+  db20xx::Table *db20xx_table_;
 
   /**
      for sequential scan
      rnd_init()
      rnd_next()
   */
-  fulgurdb::TableScanCursor seq_scan_cursor_;
-  fulgurdb::scan_stack_type masstree_scan_stack_;
+  db20xx::TableScanCursor seq_scan_cursor_;
+  db20xx::scan_stack_type masstree_scan_stack_;
 
   /**
     for transaction
@@ -95,18 +95,18 @@ class ha_fulgurdb : public handler {
   /**
    *  used in index_next() if exists multiple exact/prefix key
    */
-  fulgurdb::Key index_key_;
+  db20xx::Key index_key_;
 
-  fulgurdb::Record *current_record_;
+  db20xx::Record *current_record_;
 
  public:
-  ha_fulgurdb(handlerton *hton, TABLE_SHARE *table_arg);
-  ~ha_fulgurdb() override = default;
+  ha_db20xx(handlerton *hton, TABLE_SHARE *table_arg);
+  ~ha_db20xx() override = default;
 
   /** @brief
     The name that will be used for display purposes.
    */
-  const char *table_type() const override { return "FULGURDB"; }
+  const char *table_type() const override { return "DB20XXDB"; }
 
   /**
     Replace key algorithm with one supported by SE, return the default key
@@ -170,7 +170,7 @@ class ha_fulgurdb : public handler {
     support indexes.
    */
   uint max_supported_keys() const override {
-    return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEYS);
+    return reinterpret_cast<uint>(db20xx::DB20XX_MAX_KEYS);
   }
 
   /** @brief
@@ -183,7 +183,7 @@ class ha_fulgurdb : public handler {
     support indexes.
    */
   uint max_supported_key_parts() const override {
-    return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_PARTS);
+    return reinterpret_cast<uint>(db20xx::DB20XX_MAX_KEY_PARTS);
   }
 
   /** @brief
@@ -196,7 +196,7 @@ class ha_fulgurdb : public handler {
     support indexes.
    */
   uint max_supported_key_length() const override {
-    return reinterpret_cast<uint>(fulgurdb::FULGUR_MAX_KEY_LENGTH);
+    return reinterpret_cast<uint>(db20xx::DB20XX_MAX_KEY_LENGTH);
   }
 
   /** @brief
@@ -214,36 +214,36 @@ class ha_fulgurdb : public handler {
   }
 
   /*
-    Everything below are methods that we implement in ha_fulgurdb.cc.
+    Everything below are methods that we implement in ha_db20xx.cc.
 
     Most of these methods are not obligatory, skip them and
     MySQL will treat them as not implemented
   */
   /** @brief
-    We implement this in ha_fulgurdb.cc; it's a required method.
+    We implement this in ha_db20xx.cc; it's a required method.
   */
   int open(const char *name, int mode, uint test_if_locked,
            const dd::Table *table_def) override;  // required
 
   /** @brief
-    We implement this in ha_fulgurdb.cc; it's a required method.
+    We implement this in ha_db20xx.cc; it's a required method.
   */
   int close(void) override;  // required
 
   /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
+    We implement this in ha_db20xx.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
   */
   int write_row(uchar *buf) override;
 
   /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
+    We implement this in ha_db20xx.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
   */
   int update_row(const uchar *old_data, uchar *new_data) override;
 
   /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
+    We implement this in ha_db20xx.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
   */
   int delete_row(const uchar *buf) override;
@@ -258,25 +258,25 @@ class ha_fulgurdb : public handler {
   int index_read_map(uchar *buf, const uchar *key, key_part_map keypart_map,
                      enum ha_rkey_function find_flag) override;
   /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
+    We implement this in ha_db20xx.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
   */
   int index_next(uchar *buf) override;
 
   /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
+    We implement this in ha_db20xx.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
   */
   int index_prev(uchar *buf) override;
 
   /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
+    We implement this in ha_db20xx.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
   */
   int index_first(uchar *buf) override;
 
   /** @brief
-    We implement this in ha_fulgurdb.cc. It's not an obligatory method;
+    We implement this in ha_db20xx.cc. It's not an obligatory method;
     skip it and and MySQL will treat it as not implemented.
   */
   int index_last(uchar *buf) override;
@@ -313,6 +313,6 @@ class ha_fulgurdb : public handler {
                                                ///
  private:
   void build_key_from_mysql_key(const uchar *mysql_key, key_part_map keypart_map,
-                                fulgurdb::Key &fulgur_key,
+                                db20xx::Key &db20xx_key,
                                 bool &full_key_search);
 };

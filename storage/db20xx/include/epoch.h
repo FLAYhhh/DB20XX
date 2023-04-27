@@ -7,7 +7,7 @@
 #include "utils.h"
 #include "data_types.h"
 
-namespace fulgurdb {
+namespace db20xx {
 
 class Epoch {
 public:

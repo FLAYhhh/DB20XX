@@ -2,7 +2,7 @@
 #include "./utils.h"
 #include "./field.h"
 
-namespace fulgurdb {
+namespace db20xx {
 class Schema {
 friend class Table;
 public:

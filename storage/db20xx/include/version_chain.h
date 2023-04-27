@@ -3,7 +3,7 @@
 #include "return_status.h"
 #include "utils.h"
 
-namespace fulgurdb {
+namespace db20xx {
 class Record;
 class TableScanCursor;
 
@@ -34,4 +34,4 @@ class VersionChainHeadBlock {
   VersionChainHead entries_[ENTRY_CAPACITY];
 };
 
-}  // namespace fulgurdb
+}  // namespace db20xx

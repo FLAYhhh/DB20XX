@@ -2,7 +2,7 @@
 #include "record.h"
 #include "return_status.h"
 
-namespace fulgurdb {
+namespace db20xx {
 class TableScanCursor;
 class RecordBlock {
   friend class Table;
@@ -20,4 +20,4 @@ class RecordBlock {
   char records_data_[0];
 };
 
-}  // end of namespace fulgurdb
+}  // end of namespace db20xx

@@ -14,7 +14,7 @@
 #include "message_logger.h"
 
 
-namespace fulgurdb {
+namespace db20xx {
 
 /**
  *@brief <NOT SURE> FIXME

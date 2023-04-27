@@ -1,7 +1,7 @@
 #pragma once
 #include "utils.h"
 #include "table.h"
-namespace fulgurdb {
+namespace db20xx {
 class Database{
 public:
   Database(const std::string db_name):db_name_(db_name){}

@@ -11,7 +11,7 @@
 #include "return_status.h"
 #include "utils.h"
 #include "version_chain.h"
-namespace fulgurdb {
+namespace db20xx {
 
 class Table;
 class ThreadContext;
@@ -56,4 +56,4 @@ class TransactionContext {
   std::unordered_set<Record *> txn_modify_set_;
 };
 
-}  // namespace fulgurdb
+}  // namespace db20xx

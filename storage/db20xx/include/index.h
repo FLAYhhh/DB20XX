@@ -10,14 +10,14 @@
 #include "version_chain.h"
 #include "thread_context.h"
 
-namespace fulgurdb {
+namespace db20xx {
 using namespace Masstree;
 
 typedef Str Key;
 struct KeyInfo {
   /**
     mysql keypart counted from 1,
-    fulgurdb keypart counted from 0;
+    db20xx keypart counted from 0;
   */
   void add_key_part(uint32_t key_part) { key_parts.push_back(key_part - 1); }
   uint32_t get_key_length() { return key_len; }
@@ -43,7 +43,7 @@ class Index {
 
   /**
   @brief
-    build key from a fulgurdb record
+    build key from a db20xx record
     have memory allocation in this function, need to free by others
   @args
     arg1 record: record payload, without record header
@@ -92,7 +92,7 @@ class Index {
   KeyInfo keyinfo_;
 };
 
-struct fulgurdb_masstree_params : public nodeparams<15, 15> {
+struct db20xx_masstree_params : public nodeparams<15, 15> {
   typedef VersionChainHead *value_type;
   typedef value_print<value_type> value_print_type;
   typedef threadinfo threadinfo_type;
@@ -104,12 +104,12 @@ Mysql的scan操作由scan_range_first和一系列scan_range_next完成,
 Masstree索引使用scan_stack_type记录scan的状态.
 我们将scan_stack_type存储在class ThreadLocal中.
 */
-typedef fulgurdb_masstree_params nodeparam_type;
+typedef db20xx_masstree_params nodeparam_type;
 typedef scanstackelt<nodeparam_type> scan_stack_type;
 
 class MasstreeIndex : public Index {
-  typedef basic_table<fulgurdb_masstree_params> fulgur_masstree_type;
-  typedef typename fulgurdb_masstree_params::value_type leafvalue_type;
+  typedef basic_table<db20xx_masstree_params> db20xx_masstree_type;
+  typedef typename db20xx_masstree_params::value_type leafvalue_type;
   friend class Table;
 
  public:
@@ -132,7 +132,7 @@ class MasstreeIndex : public Index {
   */
   bool put(const Key &key, VersionChainHead *vchain_head,
            threadinfo &ti) override {
-    typename fulgur_masstree_type::cursor_type lp(masstree_, key);
+    typename db20xx_masstree_type::cursor_type lp(masstree_, key);
     bool found = lp.find_insert(ti);
     if (!found) {
       ti.observe_phantoms(lp.node());
@@ -145,7 +145,7 @@ class MasstreeIndex : public Index {
 
   /**
     @brief
-      given key, get the value(RecordLocation of a fulgurdb row) of the key
+      given key, get the value(RecordLocation of a db20xx row) of the key
     @return values
       @retval1 true: key exists
       @retval2 false: key doesnot exist
@@ -153,7 +153,7 @@ class MasstreeIndex : public Index {
   */
   bool get(const Key &key, VersionChainHead *&vchain_head,
            threadinfo &ti) const override {
-    typename fulgur_masstree_type::unlocked_cursor_type lp(masstree_, key);
+    typename db20xx_masstree_type::unlocked_cursor_type lp(masstree_, key);
     bool found = lp.find_unlocked(ti);
     if (found) vchain_head = lp.value();
 
@@ -226,7 +226,7 @@ class MasstreeIndex : public Index {
   }
 
  private:
-  fulgur_masstree_type masstree_;
+  db20xx_masstree_type masstree_;
 };
 
-}  // namespace fulgurdb
+}  // namespace db20xx
