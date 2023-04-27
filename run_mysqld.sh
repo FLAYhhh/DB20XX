@@ -1,1 +1,1 @@
-numactl --interleave=all build/bin/mysqld --defaults-file=my.cnf
+build/bin/mysqld --defaults-file=my.cnf
