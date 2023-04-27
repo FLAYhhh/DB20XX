@@ -74,7 +74,7 @@
   ha_db20xx::open() would also have been necessary. Calls to
   ha_db20xx::extra() are hints as to what will be occurring to the request.
 
-  A Longer Fulgurdb can be found called the "Skeleton Engine" which can be
+  A Longer db20xx can be found called the "Skeleton Engine" which can be
   found on TangentOrg. It has both an engine and a full build environment
   for building a pluggable storage engine.
 
@@ -99,34 +99,34 @@
 #include "../include/ha_db20xx_help.h"
 #include "../include/transaction.h"
 
-static handler *db20xx_create_handler(handlerton *hton, TABLE_SHARE *table,
+static handler *DB20XX_create_handler(handlerton *hton, TABLE_SHARE *table,
                                         bool partitioned, MEM_ROOT *mem_root);
 
-handlerton *db20xx_hton;
+handlerton *DB20XX_hton;
 
 /* Interface to mysqld, to check system tables supported by SE */
-static bool db20xx_is_supported_system_table(const char *db,
+static bool DB20XX_is_supported_system_table(const char *db,
                                                const char *table_name,
                                                bool is_sql_layer_system_table);
 
-Fulgurdb_share::Fulgurdb_share() { thr_lock_init(&lock); }
+DB20XX_share::DB20XX_share() { thr_lock_init(&lock); }
 
 /**
   @brief
-  Fulgurdb of simple lock controls. The "share" it creates is a
+  db20xx of simple lock controls. The "share" it creates is a
   structure we will pass to each db20xx handler. Do you have to have
   one of these? Well, you have pieces that are used for locking, and
   they are needed to function.
 */
 
-Fulgurdb_share *ha_db20xx::get_share() {
-  Fulgurdb_share *tmp_share;
+DB20XX_share *ha_db20xx::get_share() {
+  DB20XX_share *tmp_share;
 
   DBUG_TRACE;
 
   lock_shared_ha_data();
-  if (!(tmp_share = static_cast<Fulgurdb_share *>(get_ha_share_ptr()))) {
-    tmp_share = new Fulgurdb_share;
+  if (!(tmp_share = static_cast<DB20XX_share *>(get_ha_share_ptr()))) {
+    tmp_share = new DB20XX_share;
     if (!tmp_share) goto err;
 
     set_ha_share_ptr(static_cast<Handler_share *>(tmp_share));
@@ -136,7 +136,7 @@ err:
   return tmp_share;
 }
 
-static handler *db20xx_create_handler(handlerton *hton, TABLE_SHARE *table,
+static handler *DB20XX_create_handler(handlerton *hton, TABLE_SHARE *table,
                                         bool, MEM_ROOT *mem_root) {
   return new (mem_root) ha_db20xx(hton, table);
 }
@@ -153,7 +153,7 @@ ha_db20xx::ha_db20xx(handlerton *hton, TABLE_SHARE *table_arg)
 
   This array is optional, so every SE need not implement it.
 */
-static st_handler_tablename ha_db20xx_system_tables[] = {
+static st_handler_tablename ha_DB20XX_system_tables[] = {
     {(const char *)nullptr, (const char *)nullptr}};
 
 /**
@@ -167,7 +167,7 @@ static st_handler_tablename ha_db20xx_system_tables[] = {
   @retval true   Given db.table_name is supported system table.
   @retval false  Given db.table_name is not a supported system table.
 */
-static bool db20xx_is_supported_system_table(const char *db,
+static bool DB20XX_is_supported_system_table(const char *db,
                                                const char *table_name,
                                                bool is_sql_layer_system_table) {
   st_handler_tablename *systab;
@@ -176,7 +176,7 @@ static bool db20xx_is_supported_system_table(const char *db,
   if (is_sql_layer_system_table) return false;
 
   // Check if this is SE layer system tables
-  systab = ha_db20xx_system_tables;
+  systab = ha_DB20XX_system_tables;
   while (systab && systab->db) {
     if (systab->db == db && strcmp(systab->tablename, table_name) == 0)
       return true;
@@ -946,7 +946,7 @@ int ha_db20xx::create(const char *name, TABLE *form,
   NOTE 'all' is also false in auto-commit mode where 'end of statement'
   and 'real commit' mean the same event.
 */
-int db20xx_commit(handlerton *hton, THD *thd, bool all) {
+int DB20XX_commit(handlerton *hton, THD *thd, bool all) {
   (void)hton;
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
   db20xx::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
@@ -965,7 +965,7 @@ int db20xx_commit(handlerton *hton, THD *thd, bool all) {
 }
 
 // FIXME: <NOT SURE>
-int db20xx_rollback(handlerton *hton, THD *thd, bool all) {
+int DB20XX_rollback(handlerton *hton, THD *thd, bool all) {
   (void)hton;
   db20xx::ThreadContext *thd_ctx = get_thread_ctx();
   db20xx::TransactionContext *txn_ctx = thd_ctx->get_transaction_context();
@@ -977,22 +977,22 @@ int db20xx_rollback(handlerton *hton, THD *thd, bool all) {
   return 0;
 }
 
-static int db20xx_init_func(void *p) {
+static int DB20XX_init_func(void *p) {
   DBUG_TRACE;
 
-  db20xx_hton = (handlerton *)p;
-  db20xx_hton->state = SHOW_OPTION_YES;
-  db20xx_hton->create = db20xx_create_handler;
-  db20xx_hton->commit = db20xx_commit;
-  db20xx_hton->rollback = db20xx_rollback;
-  db20xx_hton->flags = HTON_CAN_RECREATE;
-  db20xx_hton->is_supported_system_table = db20xx_is_supported_system_table;
+  DB20XX_hton = (handlerton *)p;
+  DB20XX_hton->state = SHOW_OPTION_YES;
+  DB20XX_hton->create = DB20XX_create_handler;
+  DB20XX_hton->commit = DB20XX_commit;
+  DB20XX_hton->rollback = DB20XX_rollback;
+  DB20XX_hton->flags = HTON_CAN_RECREATE;
+  DB20XX_hton->is_supported_system_table = DB20XX_is_supported_system_table;
 
   db20xx::Engine::init();
   return 0;
 }
 
-struct st_mysql_storage_engine db20xx_storage_engine = {
+struct st_mysql_storage_engine DB20XX_storage_engine = {
     MYSQL_HANDLERTON_INTERFACE_VERSION};
 
 static ulong srv_enum_var = 0;
@@ -1052,7 +1052,7 @@ static MYSQL_THDVAR_LONGLONG(signed_longlong_thdvar, PLUGIN_VAR_RQCMDARG,
                              "LLONG_MIN..LLONG_MAX", nullptr, nullptr, -10,
                              LLONG_MIN, LLONG_MAX, 0);
 
-static SYS_VAR *db20xx_system_variables[] = {
+static SYS_VAR *DB20XX_system_variables[] = {
     MYSQL_SYSVAR(enum_var),
     MYSQL_SYSVAR(ulong_var),
     MYSQL_SYSVAR(double_var),
@@ -1080,7 +1080,7 @@ static int show_func_db20xx(MYSQL_THD, SHOW_VAR *var, char *buf) {
   return 0;
 }
 
-struct db20xx_vars_t {
+struct DB20XX_vars_t {
   ulong var1;
   double var2;
   char var3[64];
@@ -1089,46 +1089,46 @@ struct db20xx_vars_t {
   ulong var6;
 };
 
-db20xx_vars_t db20xx_vars = {100,  20.01, "three hundred",
+DB20XX_vars_t DB20XX_vars = {100,  20.01, "three hundred",
                                  true, false, 8250};
 
 static SHOW_VAR show_status_db20xx[] = {
-    {"var1", (char *)&db20xx_vars.var1, SHOW_LONG, SHOW_SCOPE_GLOBAL},
-    {"var2", (char *)&db20xx_vars.var2, SHOW_DOUBLE, SHOW_SCOPE_GLOBAL},
+    {"var1", (char *)&DB20XX_vars.var1, SHOW_LONG, SHOW_SCOPE_GLOBAL},
+    {"var2", (char *)&DB20XX_vars.var2, SHOW_DOUBLE, SHOW_SCOPE_GLOBAL},
     {nullptr, nullptr, SHOW_UNDEF,
      SHOW_SCOPE_UNDEF}  // null terminator required
 };
 
 static SHOW_VAR show_array_db20xx[] = {
     {"array", (char *)show_status_db20xx, SHOW_ARRAY, SHOW_SCOPE_GLOBAL},
-    {"var3", (char *)&db20xx_vars.var3, SHOW_CHAR, SHOW_SCOPE_GLOBAL},
-    {"var4", (char *)&db20xx_vars.var4, SHOW_BOOL, SHOW_SCOPE_GLOBAL},
+    {"var3", (char *)&DB20XX_vars.var3, SHOW_CHAR, SHOW_SCOPE_GLOBAL},
+    {"var4", (char *)&DB20XX_vars.var4, SHOW_BOOL, SHOW_SCOPE_GLOBAL},
     {nullptr, nullptr, SHOW_UNDEF, SHOW_SCOPE_UNDEF}};
 
 static SHOW_VAR func_status[] = {
-    {"db20xx_func_db20xx", (char *)show_func_db20xx, SHOW_FUNC,
+    {"DB20XX_func_db20xx", (char *)show_func_db20xx, SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
-    {"db20xx_status_var5", (char *)&db20xx_vars.var5, SHOW_BOOL,
+    {"DB20XX_status_var5", (char *)&DB20XX_vars.var5, SHOW_BOOL,
      SHOW_SCOPE_GLOBAL},
-    {"db20xx_status_var6", (char *)&db20xx_vars.var6, SHOW_LONG,
+    {"DB20XX_status_var6", (char *)&DB20XX_vars.var6, SHOW_LONG,
      SHOW_SCOPE_GLOBAL},
-    {"db20xx_status", (char *)show_array_db20xx, SHOW_ARRAY,
+    {"DB20XX_status", (char *)show_array_db20xx, SHOW_ARRAY,
      SHOW_SCOPE_GLOBAL},
     {nullptr, nullptr, SHOW_UNDEF, SHOW_SCOPE_UNDEF}};
 
 mysql_declare_plugin(db20xx){
     MYSQL_STORAGE_ENGINE_PLUGIN,
-    &db20xx_storage_engine,
+    &DB20XX_storage_engine,
     "DB20XX",
     PLUGIN_AUTHOR_ORACLE,
     "DB20XX storage engine",
     PLUGIN_LICENSE_GPL,
-    db20xx_init_func, /* Plugin Init */
+    DB20XX_init_func, /* Plugin Init */
     nullptr,            /* Plugin check uninstall */
     nullptr,            /* Plugin Deinit */
     0x0001 /* 0.1 */,
     func_status,               /* status variables */
-    db20xx_system_variables, /* system variables */
+    DB20XX_system_variables, /* system variables */
     nullptr,                   /* config options */
     0,                         /* flags */
 } mysql_declare_plugin_end;
