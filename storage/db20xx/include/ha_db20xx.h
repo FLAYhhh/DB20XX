@@ -53,14 +53,14 @@
 #include "record.h"
 
 /** @brief
-  Fulgurdb_share is a class that will be shared among all open handlers.
+  DB20xx_share is a class that will be shared among all open handlers.
   This db20xx implements the minimum of what you will probably need.
 */
-class Fulgurdb_share : public Handler_share {
+class DB20xx_share : public Handler_share {
  public:
   THR_LOCK lock;
-  Fulgurdb_share();
-  ~Fulgurdb_share() override { thr_lock_delete(&lock); }
+  DB20xx_share();
+  ~DB20xx_share() override { thr_lock_delete(&lock); }
 };
 
 /** @brief
@@ -68,8 +68,8 @@ class Fulgurdb_share : public Handler_share {
 */
 class ha_db20xx : public handler {
   THR_LOCK_DATA lock;           ///< MySQL lock
-  Fulgurdb_share *share;        ///< Shared lock info
-  Fulgurdb_share *get_share();  ///< Get the share
+  DB20xx_share *share;        ///< Shared lock info
+  DB20xx_share *get_share();  ///< Get the share
 
   db20xx::Table *db20xx_table_;
 

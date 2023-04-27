@@ -7,7 +7,7 @@
 namespace db20xx {
 
 /**
-  @brief Engine是对Fulgurdb存储引擎的全局抽象。其功能与handlerton类型的
+  @brief Engine是对DB20xx存储引擎的全局抽象。其功能与handlerton类型的
          db20xx_hton类似,不过handlerton主要服务于sl(server layer)和se(st
          -orage engine)之间的接口层，而Engine的定义和实现应当是独立的。
          handlerton中方法的实现可以借助于Engine中的方法并进行一定程度的

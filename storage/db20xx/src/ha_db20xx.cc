@@ -74,7 +74,7 @@
   ha_db20xx::open() would also have been necessary. Calls to
   ha_db20xx::extra() are hints as to what will be occurring to the request.
 
-  A Longer Fulgurdb can be found called the "Skeleton Engine" which can be
+  A Longer DB20xx can be found called the "Skeleton Engine" which can be
   found on TangentOrg. It has both an engine and a full build environment
   for building a pluggable storage engine.
 
@@ -109,24 +109,24 @@ static bool db20xx_is_supported_system_table(const char *db,
                                                const char *table_name,
                                                bool is_sql_layer_system_table);
 
-Fulgurdb_share::Fulgurdb_share() { thr_lock_init(&lock); }
+DB20xx_share::DB20xx_share() { thr_lock_init(&lock); }
 
 /**
   @brief
-  Fulgurdb of simple lock controls. The "share" it creates is a
+  DB20xx of simple lock controls. The "share" it creates is a
   structure we will pass to each db20xx handler. Do you have to have
   one of these? Well, you have pieces that are used for locking, and
   they are needed to function.
 */
 
-Fulgurdb_share *ha_db20xx::get_share() {
-  Fulgurdb_share *tmp_share;
+DB20xx_share *ha_db20xx::get_share() {
+  DB20xx_share *tmp_share;
 
   DBUG_TRACE;
 
   lock_shared_ha_data();
-  if (!(tmp_share = static_cast<Fulgurdb_share *>(get_ha_share_ptr()))) {
-    tmp_share = new Fulgurdb_share;
+  if (!(tmp_share = static_cast<DB20xx_share *>(get_ha_share_ptr()))) {
+    tmp_share = new DB20xx_share;
     if (!tmp_share) goto err;
 
     set_ha_share_ptr(static_cast<Handler_share *>(tmp_share));
@@ -1119,9 +1119,9 @@ static SHOW_VAR func_status[] = {
 mysql_declare_plugin(db20xx){
     MYSQL_STORAGE_ENGINE_PLUGIN,
     &db20xx_storage_engine,
-    "DB20XXDB",
+    "DB20XX",
     PLUGIN_AUTHOR_ORACLE,
-    "Fulgurdb storage engine",
+    "DB20xx storage engine",
     PLUGIN_LICENSE_GPL,
     db20xx_init_func, /* Plugin Init */
     nullptr,            /* Plugin check uninstall */
