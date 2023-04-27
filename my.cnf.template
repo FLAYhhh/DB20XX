@@ -1,6 +1,6 @@
 [mysqld]
 port=3336
-datadir=/home/luanhao/usr/.db20xx/data
+datadir=<USER>/usr/.db20xx/data
 skip-log-bin
 secure-file-priv = ""
 innodb_buffer_pool_size = 10636764160
