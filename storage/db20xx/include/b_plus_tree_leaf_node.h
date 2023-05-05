@@ -20,9 +20,9 @@ namespace db20xx {
  * | HEADER | KEY(1) + VersionChainHead(1) | KEY(2) + VersionChainHead(2) | ... | KEY(n) + VersionChainHead(n)
  *  ----------------------------------------------------------------------
  *
- *  Header format (size in byte, 16 bytes in total):
+ *  Header format (size in byte):
  *  ---------------------------------------------------------------------
- * | NodeType (4) | CurrentSize (4) | MaxSize (4) |
+ * | NodeType (4) | rwlock | CurrentSize (4) | MaxSize (4) |
  *  ---------------------------------------------------------------------
  *  -----------------------------------------------
  * |  NextNodeId (8)

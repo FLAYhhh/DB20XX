@@ -1,6 +1,8 @@
 #include "index.h"
+#include <deque>
 
 namespace db20xx {
+
 class BplusTreeIndex : public Index {
   friend class Table;
 
