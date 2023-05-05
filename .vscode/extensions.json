@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "ccls-project.ccls",
+        "twxs.cmake",
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools"
+    ]
+}
