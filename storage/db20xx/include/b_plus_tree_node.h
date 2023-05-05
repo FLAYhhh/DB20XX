@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <shared_mutex>
+#include "utils.h"
 namespace db20xx {
 
 #define DB20XX_NODE_SIZE 4096
@@ -38,7 +38,7 @@ class BPlusTreeNode {
  private:
   // member variable, attributes that both internal and leaf node share
   IndexNodeType node_type_ __attribute__((__unused__));
-  std::shared_mutex rwlock_;
+  ReaderWriterLatch rwlock_;
   int size_ __attribute__((__unused__));
   int max_size_ __attribute__((__unused__));
 };
