@@ -88,7 +88,7 @@ class Table {
                              ThreadContext &thd_ctx, bool read_own);
 
   int index_scan_range_first(uint32_t idx, const Key &key, Record *&record,
-                              bool emit_firstkey, scan_stack_type &scan_stack,
+                              bool emit_firstkey, ScanIterator &scan_stack,
                               ThreadContext &thd_ctx, bool read_own) const;
 
   /**
@@ -97,15 +97,15 @@ class Table {
    *  @retval false: End of index
    */
   int index_scan_range_next(uint32_t idx, Record *&record,
-                             scan_stack_type &scan_stack,
+                             ScanIterator &scan_stack,
                              ThreadContext &thd_ctx, bool read_own) const;
 
   int index_rscan_range_first(uint32_t idx, const Key &key, Record *&record,
-                               bool emit_firstkey, scan_stack_type &scan_stack,
+                               bool emit_firstkey, ScanIterator &scan_stack,
                                ThreadContext &thd_ctx, bool read_own) const;
 
   int index_rscan_range_next(uint32_t idx, Record *&record,
-                              scan_stack_type &scan_stack,
+                              ScanIterator &scan_stack,
                               ThreadContext &thd_ctx, bool read_own) const;
 
   uint32_t get_key_length(uint32_t idx) {
@@ -113,11 +113,11 @@ class Table {
   }
 
   int index_prefix_key_search(uint32_t idx, const Key &key, Record *&record,
-                               scan_stack_type &scan_stack,
+                               ScanIterator &scan_stack,
                                ThreadContext &thd_ctx, bool read_own) const;
 
   int index_prefix_search_next(uint32_t idx, const Key &key, Record *&record,
-                                scan_stack_type &scan_stack,
+                                ScanIterator &scan_stack,
                                 ThreadContext &thd_ctx, bool read_own) const;
 
  private:
@@ -165,7 +165,7 @@ class Table {
   std::array<RecordBlock *, PARALLEL_WRITER_NUM> record_allocators_;
 
   // index
-  std::vector<MasstreeIndex *> indexes_;
+  std::vector<Index *> indexes_;
   std::atomic<uint32_t> next_vchain_head_block_id_ = 0;
   CuckooMap<uint32_t, VersionChainHeadBlock *> vchain_head_blocks_;
   std::array<VersionChainHeadBlock *, PARALLEL_WRITER_NUM>

@@ -385,26 +385,26 @@ int ha_db20xx::index_read_map(uchar *mysql_record, const uchar *key,
   if (!full_key_search) {
     assert(find_flag == HA_READ_KEY_EXACT);
     found = db20xx_table_->index_prefix_key_search(
-        active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, index_scan_iterator_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_KEY_EXACT) {
     found = db20xx_table_->get_record_from_index(
         active_index, index_key_, record, *thd_ctx, read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_NEXT) {
     found = db20xx_table_->index_scan_range_first(
-        active_index, index_key_, record, true, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, true, index_scan_iterator_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_AFTER_KEY) {
     found = db20xx_table_->index_scan_range_first(
-        active_index, index_key_, record, false, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, false, index_scan_iterator_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_KEY_OR_PREV) {
     found = db20xx_table_->index_rscan_range_first(
-        active_index, index_key_, record, true, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, true, index_scan_iterator_, *thd_ctx,
         read_own_statement_);
   } else if (find_flag == HA_READ_BEFORE_KEY) {
     found = db20xx_table_->index_rscan_range_first(
-        active_index, index_key_, record, false, masstree_scan_stack_, *thd_ctx,
+        active_index, index_key_, record, false, index_scan_iterator_, *thd_ctx,
         read_own_statement_);
   } else {
     // TODO:panic
@@ -436,18 +436,18 @@ int ha_db20xx::index_next(uchar *mysql_record) {
     case HA_READ_KEY_OR_NEXT:
     case HA_READ_AFTER_KEY:
       found = db20xx_table_->index_scan_range_next(
-          active_index, record, masstree_scan_stack_, *thd_ctx,
+          active_index, record, index_scan_iterator_, *thd_ctx,
           read_own_statement_);
       break;
     case HA_READ_KEY_OR_PREV:
     case HA_READ_BEFORE_KEY:
       found = db20xx_table_->index_rscan_range_next(
-          active_index, record, masstree_scan_stack_, *thd_ctx,
+          active_index, record, index_scan_iterator_, *thd_ctx,
           read_own_statement_);
       break;
     case HA_READ_KEY_EXACT:
       found = db20xx_table_->index_prefix_search_next(
-          active_index, index_key_, record, masstree_scan_stack_, *thd_ctx,
+          active_index, index_key_, record, index_scan_iterator_, *thd_ctx,
           read_own_statement_);
       break;
     default:

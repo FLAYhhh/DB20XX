@@ -41,6 +41,7 @@
 #pragma once
 #include <sys/types.h>
 
+#include "index.h"
 #include "my_base.h" /* ha_rows */
 #include "my_compiler.h"
 #include "my_inttypes.h"
@@ -79,7 +80,7 @@ class ha_db20xx : public handler {
      rnd_next()
   */
   db20xx::TableScanCursor seq_scan_cursor_;
-  db20xx::scan_stack_type masstree_scan_stack_;
+  db20xx::ScanIterator index_scan_iterator_;
 
   /**
     for transaction

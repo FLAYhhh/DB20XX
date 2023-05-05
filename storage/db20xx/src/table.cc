@@ -4,6 +4,7 @@
 #include <memory>
 #include "data_types.h"
 #include "index.h"
+#include "bplustree_index.h"
 #include "message_logger.h"
 #include "return_status.h"
 #include "transaction.h"
@@ -180,9 +181,8 @@ int Table::table_scan_get(TableScanCursor &scan_cursor, bool read_own,
      1. columns id that consist of key
      2. key length
 */
-void Table::build_index(const KeyInfo &keyinfo, threadinfo &ti) {
-  MasstreeIndex *index = new MasstreeIndex(keyinfo);
-  index->initialize(ti);
+void Table::build_index(const KeyInfo &keyinfo, [[maybe_unused]] threadinfo &ti) {
+  BplusTreeIndex *index = new BplusTreeIndex(keyinfo);
   indexes_.push_back(index);
 }
 
@@ -195,7 +195,7 @@ void Table::insert_record_to_index(uint32_t idx, VersionChainHead *vchain_head,
   Key key;
   indexes_[idx]->build_key(vchain_head->get_latest_record_payload(), key,
                            thd_ctx);
-  indexes_[idx]->put(key, vchain_head, *thd_ctx->ti_);
+  indexes_[idx]->put(key, vchain_head);
 }
 
 void Table::insert_record_to_index(VersionChainHead *vchain_head,
@@ -215,7 +215,7 @@ void Table::insert_record_to_index(VersionChainHead *vchain_head,
 int Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
                                  ThreadContext &thd_ctx, bool read_own) {
   VersionChainHead *vchain_head = nullptr;
-  bool found = indexes_[idx]->get(key, vchain_head, *thd_ctx.ti_);
+  bool found = indexes_[idx]->get(key, vchain_head);
   if (!found) {
     // LOG_DEBUG("do not find in index");
     return DB20XX_KEY_NOT_EXIST;
@@ -233,13 +233,13 @@ int Table::get_record_from_index(uint32_t idx, const Key &key, Record *&record,
 
 int Table::index_scan_range_first(uint32_t idx, const Key &key, Record *&record,
                                   bool emit_firstkey,
-                                  scan_stack_type &scan_stack,
+                                  ScanIterator &scan_stack,
                                   ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   scan_stack.reset();
 
   bool found = indexes_[idx]->scan_range_first(key, vchain_head, emit_firstkey,
-                                               scan_stack, *thd_ctx.ti_);
+                                               scan_stack);
   if (!found) return DB20XX_KEY_NOT_EXIST;
 
   // Traverse the version chain to find a valid version
@@ -260,11 +260,11 @@ int Table::index_scan_range_first(uint32_t idx, const Key &key, Record *&record,
 }
 
 int Table::index_scan_range_next(uint32_t idx, Record *&record,
-                                 scan_stack_type &scan_stack,
+                                 ScanIterator &scan_stack,
                                  ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   bool found =
-      indexes_[idx]->scan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
+      indexes_[idx]->scan_range_next(vchain_head, scan_stack);
   if (!found) return DB20XX_INDEX_RANGE_END;
 
   // Traverse the version chain to find a valid version
@@ -289,14 +289,14 @@ int Table::index_scan_range_next(uint32_t idx, Record *&record,
 
 int Table::index_rscan_range_first(uint32_t idx, const Key &key,
                                    Record *&record, bool emit_firstkey,
-                                   scan_stack_type &scan_stack,
+                                   ScanIterator &scan_stack,
                                    ThreadContext &thd_ctx,
                                    bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   scan_stack.reset();
 
   bool found = indexes_[idx]->rscan_range_first(key, vchain_head, emit_firstkey,
-                                                scan_stack, *thd_ctx.ti_);
+                                                scan_stack);
   if (!found) return DB20XX_KEY_NOT_EXIST;
 
   // Traverse the version chain to find a valid version
@@ -318,11 +318,11 @@ int Table::index_rscan_range_first(uint32_t idx, const Key &key,
 }
 
 int Table::index_rscan_range_next(uint32_t idx, Record *&record,
-                                  scan_stack_type &scan_stack,
+                                  ScanIterator &scan_stack,
                                   ThreadContext &thd_ctx, bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
   bool found =
-      indexes_[idx]->rscan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
+      indexes_[idx]->rscan_range_next(vchain_head, scan_stack);
   if (!found) return DB20XX_INDEX_RANGE_END;
 
   // Traverse the version chain to find a valid version
@@ -347,7 +347,7 @@ int Table::index_rscan_range_next(uint32_t idx, Record *&record,
 }
 
 int Table::index_prefix_key_search(uint32_t idx, const Key &key,
-                                   Record *&record, scan_stack_type &scan_stack,
+                                   Record *&record, ScanIterator &scan_stack,
                                    ThreadContext &thd_ctx,
                                    bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
@@ -355,11 +355,11 @@ int Table::index_prefix_key_search(uint32_t idx, const Key &key,
 
   // found=true means scan has not reached the end
   bool found = indexes_[idx]->scan_range_first(key, vchain_head, true,
-                                               scan_stack, *thd_ctx.ti_);
+                                               scan_stack);
 
   if (!found) return DB20XX_KEY_NOT_EXIST;
 
-  Key current_key = scan_stack.get_current_key().full_string();
+  Key current_key = scan_stack.get_current_key();
   if (current_key.less_than(key)) {
     return index_prefix_search_next(idx, key, record, scan_stack, thd_ctx,
                                     read_own);
@@ -390,18 +390,18 @@ int Table::index_prefix_key_search(uint32_t idx, const Key &key,
 
 int Table::index_prefix_search_next(uint32_t idx, const Key &key,
                                     Record *&record,
-                                    scan_stack_type &scan_stack,
+                                    ScanIterator &scan_stack,
                                     ThreadContext &thd_ctx,
                                     bool read_own) const {
   VersionChainHead *vchain_head = nullptr;
 
   // found=true means scan has not reached the end
   bool found =
-      indexes_[idx]->scan_range_next(vchain_head, scan_stack, *thd_ctx.ti_);
+      indexes_[idx]->scan_range_next(vchain_head, scan_stack);
 
   if (!found) return DB20XX_INDEX_RANGE_END;
 
-  Key current_key = scan_stack.get_current_key().full_string();
+  Key current_key = scan_stack.get_current_key();
   if (!current_key.has_prefix(key)) {
     return DB20XX_INDEX_RANGE_END;
   }
