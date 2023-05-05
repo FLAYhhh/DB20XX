@@ -12,6 +12,11 @@ namespace db20xx {
 using namespace Masstree::lcdf;
 typedef Str Key;
 
+
+using KeyType = Key;
+using ValueType = VersionChainHead *;
+using MappingType = std::pair<Key, VersionChainHead *>;
+
 struct KeyInfo {
   /**
     mysql keypart counted from 1,
