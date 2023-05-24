@@ -21,6 +21,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 
 SET(DB20XX_PLUGIN_DYNAMIC "ha_db20xx")
+SET(CXX_STANDARD 17)
 include_directories(
 include
 libs
@@ -37,7 +38,7 @@ libs/masstree-beta/string_slice.cc
 libs/masstree-beta/straccum.cc
 )
 list(APPEND DB20XX_SOURCES ${DB_SRC} ${LIB_SRC})
-add_compile_options(-Wall -Werror)
+add_compile_options(-Wall -Werror -Wextra -Wno-unused-parameter -Wno-attributes)
 
 ADD_DEFINITIONS(-DMYSQL_SERVER)
 MYSQL_ADD_PLUGIN(db20xx ${DB20XX_SOURCES} STORAGE_ENGINE DEFAULT)

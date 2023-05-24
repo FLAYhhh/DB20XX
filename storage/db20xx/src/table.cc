@@ -4,7 +4,7 @@
 #include <memory>
 #include "data_types.h"
 #include "index.h"
-#include "bplustree_index.h"
+#include "b_plus_tree_index.h"
 #include "message_logger.h"
 #include "return_status.h"
 #include "transaction.h"
