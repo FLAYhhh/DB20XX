@@ -93,6 +93,7 @@ class BPlusTreeInternalNode : public BPlusTreeNode {
   }
 
  private:
+  using MappingType = std::pair<Key, BPlusTreeNode*>;
   // Flexible array member for page data.
   MappingType array_[0];
 };
