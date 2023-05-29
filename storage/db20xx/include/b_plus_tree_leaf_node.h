@@ -8,8 +8,9 @@
 
 namespace db20xx {
 
+using LeafNodeMappingType = std::pair<Key, VersionChainHead *>;
 #define LEAF_NODE_HEADER_SIZE 16
-#define LEAF_NODE_SIZE ((DB20XX_NODE_SIZE - LEAF_NODE_HEADER_SIZE) / sizeof(MappingType))
+#define LEAF_NODE_SIZE ((DB20XX_NODE_SIZE - LEAF_NODE_HEADER_SIZE) / sizeof(LeafNodeMappingType))
 
 /**
  * Store indexed key and VersionChainHead(see MVCC of In-memory database)
@@ -74,7 +75,7 @@ class BPlusTreeLeafNode : public BPlusTreeNode {
  private:
   BPlusTreeLeafNode *next_node_;
   // Flexible array member for node data.
-  MappingType array_[0];
+  LeafNodeMappingType array_[0];
 };
 }  // namespace db20xx
 

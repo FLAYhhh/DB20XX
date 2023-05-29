@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "b_plus_tree_node.h"
 #include "record.h"
 #include "transaction.h"
 #include "utils.h"
@@ -14,8 +15,8 @@ typedef Str Key;
 
 
 using KeyType = Key;
-using ValueType = VersionChainHead *;
-using MappingType = std::pair<Key, VersionChainHead *>;
+using InternalNodeValueType = BPlusTreeNode *;
+using LeafNodeValueType = VersionChainHead *;
 
 struct KeyInfo {
   /**
@@ -33,9 +34,23 @@ struct KeyInfo {
 //TODO
 class ScanIterator {
 public:
-  const Key &get_current_key();
-  VersionChainHead *get_current_value();
-  void reset();
+  const Key &get_current_key() {
+    // TODO
+    assert(false);
+    return *new Key;
+  }
+
+  VersionChainHead *get_current_value() {
+    // TODO
+    assert(false);
+    return nullptr;
+  }
+
+  void reset() {
+    // TODO
+    assert(false);
+    return;
+  }
 };
 
 class Index {

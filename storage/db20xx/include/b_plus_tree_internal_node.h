@@ -9,8 +9,9 @@
 
 namespace db20xx {
 
+using InteralNodeMappingType = std::pair<Key, BPlusTreeNode*>;
 #define INTERNAL_NODE_HEADER_SIZE 12
-#define INTERNAL_NODE_SIZE ((DB20XX_NODE_SIZE - INTERNAL_NODE_HEADER_SIZE) / (sizeof(MappingType)))
+#define INTERNAL_NODE_SIZE ((DB20XX_NODE_SIZE - INTERNAL_NODE_HEADER_SIZE) / (sizeof(InteralNodeMappingType)))
 
 /**
  * Store n indexed keys and n+1 child pointers (node_address) within internal node.
@@ -57,14 +58,14 @@ class BPlusTreeInternalNode : public BPlusTreeNode {
    *
    * @param value the value to search for
    */
-  auto ValueIndex(const ValueType &value) const -> int;
+  auto ValueIndex(const InternalNodeValueType &value) const -> int;
 
   /**
    *
    * @param index the index
    * @return the value at the index
    */
-  auto ValueAt(int index) const -> ValueType;
+  auto ValueAt(int index) const -> InternalNodeValueType;
 
   /**
    * @brief For test only, return a string representing all keys in
@@ -93,9 +94,8 @@ class BPlusTreeInternalNode : public BPlusTreeNode {
   }
 
  private:
-  using MappingType = std::pair<Key, BPlusTreeNode*>;
   // Flexible array member for page data.
-  MappingType array_[0];
+  InteralNodeMappingType array_[0];
 };
 }  // namespace db20xx
 
